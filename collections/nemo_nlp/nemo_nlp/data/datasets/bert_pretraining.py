@@ -24,6 +24,43 @@ import random
 import numpy as np
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import h5py
+import torch
+
+class BertJoCPretrainingDataset(Dataset):
+
+    def __init__(self, input_file, max_pred_length):
+        self.input_file = input_file
+        self.max_pred_length = max_pred_length
+        f = h5py.File(input_file, "r")
+        keys = ['input_ids', 'input_mask', 'segment_ids', 'masked_lm_positions', 'masked_lm_ids',
+                'next_sentence_labels']
+        self.inputs = [np.asarray(f[key][:]) for key in keys]
+        f.close()
+
+    def __len__(self):
+        'Denotes the total number of samples'
+        return len(self.inputs[0])
+
+    def __getitem__(self, index):
+
+        [input_ids, input_mask, segment_ids, masked_lm_positions, masked_lm_ids, next_sentence_labels] = [
+            input[index].astype(np.int64) for indice, input in enumerate(self.inputs)]
+
+        output_mask = np.zeros_like(input_ids)
+        output_ids = input_ids.copy()
+
+        index = self.max_pred_length
+        padded_mask_indices = (masked_lm_positions == 0).nonzero()
+        if len(padded_mask_indices[0]) != 0:
+            index = padded_mask_indices[0][0]
+
+        output_mask[masked_lm_positions[:index]] = 1.
+        output_ids[masked_lm_positions[:index]] = masked_lm_ids[:index]
+
+        input_mask = np.asarray(input_mask, dtype=np.float32)
+        output_mask = np.array(output_mask, dtype=np.float32)
+        return input_ids, segment_ids, input_mask, output_ids, output_mask, next_sentence_labels
 
 
 class BertPretrainingDataset(Dataset):
@@ -258,10 +295,24 @@ class BertPretrainingDataset(Dataset):
         padding_length = max(0, self.max_seq_length - len(input_ids))
         if padding_length > 0:
             input_ids.extend([self.pad_id] * padding_length)
+            print("output_ids before", output_ids)
             output_ids.extend([self.pad_id] * padding_length)
             output_mask.extend([0] * padding_length)
 
         # TODO: wrap the return value with () for consistent style.
+
+        # print("input_ids", np.asarray(input_ids).shape)
+        # print(input_ids)
+        # print("input_type_ids", np.asarray(input_type_ids).shape)
+        # print(input_type_ids)
+        # print("output_ids", np.asarray(output_ids).shape)
+        # print(output_ids)
+        # print("output_mask", np.asarray(output_mask).shape)
+        # print(output_mask)
+        # print(sum(np.asarray(output_mask)))
+        # print("is_next", np.asarray(is_next).shape)
+        # print(is_next)
+
         return np.array(input_ids), input_type_ids,\
             np.array(input_mask, dtype=np.float32), np.array(output_ids),\
             np.array(output_mask, dtype=np.float32), is_next

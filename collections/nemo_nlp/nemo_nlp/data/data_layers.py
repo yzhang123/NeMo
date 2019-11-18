@@ -393,9 +393,10 @@ class BertJoCPretrainingDataLayer(TextDataLayer):
     def __init__(self,
                  dataset,
                  max_pred_length,
+                 mode = "training",
                  batch_size=64,
                  **kwargs):
-        files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and 'training' in f]
+        files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and mode in f]
         files.sort()
         num_files = len(files)
         random.shuffle(files)

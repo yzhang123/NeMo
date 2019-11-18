@@ -103,10 +103,10 @@ mlm_classifier.mlp.last_linear_layer.weight = \
     bert_model.bert.embeddings.word_embeddings.weight
 
 
-def create_pipeline(data_file, max_predictions_per_seq, batch_size):
+def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode):
     data_layer = nemo_nlp.BertJoCPretrainingDataLayer(data_file,
                                                    max_predictions_per_seq,
-                                                   batch_size=batch_size)
+                                                   batch_size=batch_size, mode=mode)
     steps_per_epoch = len(data_layer) // (batch_size * args.num_gpus)
 
     input_ids, input_type_ids, input_mask, \
@@ -128,10 +128,10 @@ def create_pipeline(data_file, max_predictions_per_seq, batch_size):
 
 train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
                                                  args.max_predictions_per_seq,
-                                                 args.batch_size)
+                                                 args.batch_size, mode="training")
 eval_loss, eval_tensors, _ = create_pipeline(args.data_dir,
                                             args.max_predictions_per_seq,
-                                             args.eval_batch_size)
+                                             args.eval_batch_size, mode="test")
 
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
