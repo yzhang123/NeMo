@@ -10,6 +10,7 @@ __all__ = ['TextDataLayer',
            'LanguageModelingDataLayer',
            'BertTokenClassificationDataLayer',
            'BertPretrainingDataLayer',
+           'BertJoCPretrainingDataLayer',
            'TranslationDataLayer',
            'GlueDataLayerClassification',
            'GlueDataLayerRegression']
@@ -21,8 +22,10 @@ import torch
 from torch.utils import data as pt_data
 
 import nemo
+import random
 from nemo.backends.pytorch.nm import DataLayerNM
 from nemo.core.neural_types import *
+import os
 
 from .datasets import *
 
@@ -332,6 +335,81 @@ class BertTokenClassificationDataLayer(TextDataLayer):
     def eval_preds(self, logits, seq_ids, tag_ids):
         return self._dataset.eval_preds(logits, seq_ids, tag_ids)
 
+
+class BertJoCPretrainingDataLayer(TextDataLayer):
+    """
+    Data layer for masked language modeling task.
+
+    Args:
+        tokenizer (TokenizerSpec): tokenizer
+        dataset (str): directory or a single file with dataset documents
+        max_seq_length (int): maximum allowed length of the text segments
+        mask_probability (float): probability of masking input sequence tokens
+        batch_size (int): batch size in segments
+        short_seeq_prob (float): Probability of creating sequences which are
+            shorter than the maximum length.
+            Defualts to 0.1.
+    """
+
+    @staticmethod
+    def create_ports():
+        """
+        input_ids: indices of tokens which constitute batches of text segments
+        input_type_ids: indices of token types (e.g., sentences A & B in BERT)
+        input_mask: bool tensor with 0s in place of tokens to be masked
+        output_ids: indices of output tokens which should be predicted
+        output_mask: bool tensor with 0s in place of tokens to be excluded
+            from loss calculation
+        labels: indices of classes to be predicted from [CLS] token of text
+            segments (e.g, 0 or 1 in next sentence prediction task)
+        """
+        input_ports = {}
+        output_ports = {
+            "input_ids": NeuralType({
+                0: AxisType(BatchTag),
+                1: AxisType(TimeTag)
+            }),
+            "input_type_ids": NeuralType({
+                0: AxisType(BatchTag),
+                1: AxisType(TimeTag)
+            }),
+            "input_mask": NeuralType({
+                0: AxisType(BatchTag),
+                1: AxisType(TimeTag)
+            }),
+            "output_ids": NeuralType({
+                0: AxisType(BatchTag),
+                1: AxisType(TimeTag)
+            }),
+            "output_mask": NeuralType({
+                0: AxisType(BatchTag),
+                1: AxisType(TimeTag)
+            }),
+            "labels": NeuralType({0: AxisType(BatchTag)}),
+        }
+
+        return input_ports, output_ports
+
+    def __init__(self,
+                 dataset,
+                 max_pred_length,
+                 batch_size=64,
+                 **kwargs):
+        files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and 'training' in f]
+        files.sort()
+        num_files = len(files)
+        random.shuffle(files)
+        f_start_id = 0
+        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > num_files:
+            remainder = torch.distributed.get_world_size() % num_files
+            data_file = files[(f_start_id*torch.distributed.get_world_size()+torch.distributed.get_rank() + remainder*f_start_id)%num_files]
+        else:
+            data_file = files[f_start_id%num_files]
+        kwargs['batch_size'] = batch_size
+        dataset_params = {'input_file': data_file,
+                          'max_pred_length': max_pred_length
+                        }
+        super().__init__(BertJoCPretrainingDataset, dataset_params, **kwargs)
 
 class BertPretrainingDataLayer(TextDataLayer):
     """

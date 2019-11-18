@@ -7,18 +7,23 @@ import nemo
 from nemo.utils.lr_policies import get_lr_policy
 
 import nemo_nlp
-from nemo_nlp.data.datasets.utils import BERTPretrainingDataDesc
+from nemo_nlp import NemoBertTokenizer, SentencePieceTokenizer
 from nemo_nlp.utils.callbacks.bert_pretraining import \
     eval_iter_callback, eval_epochs_done_callback
+from pytorch_transformers import BertConfig
 
 
 parser = argparse.ArgumentParser(description='BERT pretraining')
 parser.add_argument("--local_rank", default=None, type=int)
-parser.add_argument("--num_gpus", default=1, type=int)
-parser.add_argument("--num_epochs", default=10, type=int)
+parser.add_argument("--config_file", default=None, type=str, required=True, help="The BERT model config")
+
+parser.add_argument("--max_seq_length", default=128, type=int)
+parser.add_argument("--max_predictions_per_seq", default=20, type=int, help="maximum number of masked tokens to predict")
 parser.add_argument("--batch_size", default=64, type=int)
-parser.add_argument("--eval_batch_size", default=16, type=int)
 parser.add_argument("--lr", default=0.01, type=float)
+parser.add_argument("--num_epochs", default=10, type=int)
+parser.add_argument("--num_gpus", default=1, type=int)
+parser.add_argument("--eval_batch_size", default=16, type=int)
 parser.add_argument("--lr_policy", default="CosineAnnealing", type=str)
 parser.add_argument("--lr_warmup_proportion", default=0.05, type=float)
 parser.add_argument("--optimizer", default="novograd", type=str)
@@ -29,23 +34,28 @@ parser.add_argument("--amp_opt_level",
                     type=str,
                     choices=["O0", "O1", "O2"])
 parser.add_argument("--weight_decay", default=0.0, type=float)
+parser.add_argument("--bert_checkpoint", default=None, type=str,
+                    help="Path to model checkpoint")
 parser.add_argument("--vocab_size", default=3200, type=int)
 parser.add_argument("--sample_size", default=1e7, type=int)
-parser.add_argument("--max_seq_length", default=128, type=int)
 parser.add_argument("--mask_probability", default=0.15, type=float)
 parser.add_argument("--short_seq_prob", default=0.1, type=float)
-parser.add_argument("--d_model", default=768, type=int)
-parser.add_argument("--d_inner", default=3072, type=int)
-parser.add_argument("--num_layers", default=12, type=int)
-parser.add_argument("--num_heads", default=12, type=int)
+parser.add_argument("--hidden_size", default=768, type=int)
+parser.add_argument("--intermediate_size", default=3072, type=int)
+parser.add_argument("--num_hidden_layers", default=12, type=int)
+parser.add_argument("--num_attention_heads", default=12, type=int)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
 parser.add_argument("--dataset_name", default="wikitext-2", type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
 parser.add_argument("--save_step_freq", default=-1, type=int)
+parser.add_argument("--pretrained_bert_model", default="bert-base-uncased",
+                    type=str, help="Name of the pre-trained model")
 args = parser.parse_args()
 
-work_dir = f'{args.work_dir}/{args.dataset_name.upper()}'
+# work_dir = f'{args.work_dir}/{args.upper()}'
+
+
 nf = nemo.core.NeuralModuleFactory(backend=nemo.core.Backend.PyTorch,
                                    local_rank=args.local_rank,
                                    optimization_level=args.amp_opt_level,
@@ -54,36 +64,33 @@ nf = nemo.core.NeuralModuleFactory(backend=nemo.core.Backend.PyTorch,
                                    files_to_copy=[__file__],
                                    add_time_to_log_dir=True)
 
-special_tokens = ['PAD', '[UNK]', '[CLS]', '[SEP]', '[MASK]']
-data_desc = BERTPretrainingDataDesc(args.dataset_name,
-                                    args.data_dir,
-                                    args.vocab_size,
-                                    args.sample_size,
-                                    special_tokens,
-                                    'train.txt')
+config = BertConfig.from_json_file(args.config_file)
+# Padding for divisibility by 8
+# if config.vocab_size % 8 != 0:
+#     config.vocab_size += 8 - (config.vocab_size % 8)
+if args.bert_checkpoint is None:
+    """ Use this if you're using a standard BERT model.
+    To see the list of pretrained models, call:
+    nemo_nlp.huggingface.BERT.list_pretrained_models()
+    """
+    tokenizer = NemoBertTokenizer(args.pretrained_bert_model)
+    # model = nemo_nlp.huggingface.BERT(
+    #     pretrained_model_name=args.pretrained_bert_model)
+    bert_model = nemo_nlp.huggingface.BERT(
+    **config.to_dict(),
+    factory=nf)
 
-tokenizer = nemo_nlp.SentencePieceTokenizer(
-    model_path=data_desc.tokenizer_model)
-tokenizer.add_special_tokens(special_tokens)
-bert_model = nemo_nlp.huggingface.BERT(
-    vocab_size=tokenizer.vocab_size,
-    num_layers=args.num_layers,
-    d_model=args.d_model,
-    num_heads=args.num_heads,
-    d_inner=args.d_inner,
-    max_seq_length=args.max_seq_length,
-    hidden_act="gelu")
 
 """ create necessary modules for the whole translation pipeline, namely
 data layers, BERT encoder, and MLM and NSP loss functions
 """
-mlm_classifier = nemo_nlp.TokenClassifier(args.d_model,
+mlm_classifier = nemo_nlp.TokenClassifier(config.hidden_size,
                                           num_classes=tokenizer.vocab_size,
                                           num_layers=1,
                                           log_softmax=True)
 mlm_loss_fn = nemo_nlp.MaskedLanguageModelingLossNM()
 
-nsp_classifier = nemo_nlp.SequenceClassifier(args.d_model,
+nsp_classifier = nemo_nlp.SequenceClassifier(config.hidden_size,
                                              num_classes=2,
                                              num_layers=2,
                                              log_softmax=True)
@@ -96,13 +103,9 @@ mlm_classifier.mlp.last_linear_layer.weight = \
     bert_model.bert.embeddings.word_embeddings.weight
 
 
-def create_pipeline(data_file, max_seq_length, mask_probability,
-                    short_seq_prob, batch_size):
-    data_layer = nemo_nlp.BertPretrainingDataLayer(tokenizer,
-                                                   data_file,
-                                                   max_seq_length,
-                                                   mask_probability,
-                                                   short_seq_prob,
+def create_pipeline(data_file, max_predictions_per_seq, batch_size):
+    data_layer = nemo_nlp.BertJoCPretrainingDataLayer(data_file,
+                                                   max_predictions_per_seq,
                                                    batch_size=batch_size)
     steps_per_epoch = len(data_layer) // (batch_size * args.num_gpus)
 
@@ -122,15 +125,12 @@ def create_pipeline(data_file, max_seq_length, mask_probability,
     return loss, [mlm_loss, nsp_loss], steps_per_epoch
 
 
-train_loss, _, steps_per_epoch = create_pipeline(data_desc.train_file,
-                                                 args.max_seq_length,
-                                                 args.mask_probability,
-                                                 args.short_seq_prob,
+
+train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
+                                                 args.max_predictions_per_seq,
                                                  args.batch_size)
-eval_loss, eval_tensors, _ = create_pipeline(data_desc.eval_file,
-                                             args.max_seq_length,
-                                             args.mask_probability,
-                                             args.short_seq_prob,
+eval_loss, eval_tensors, _ = create_pipeline(args.data_dir,
+                                            args.max_predictions_per_seq,
                                              args.eval_batch_size)
 
 # callback which prints training loss and perplexity once in a while
