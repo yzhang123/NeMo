@@ -26,6 +26,8 @@ import random
 from nemo.backends.pytorch.nm import DataLayerNM
 from nemo.core.neural_types import *
 import os
+import h5py
+import numpy as np
 
 from .datasets import *
 
@@ -336,7 +338,7 @@ class BertTokenClassificationDataLayer(TextDataLayer):
         return self._dataset.eval_preds(logits, seq_ids, tag_ids)
 
 
-class BertJoCPretrainingDataLayer(TextDataLayer):
+class BertJoCPretrainingDataLayer(DataLayerNM):
     """
     Data layer for masked language modeling task.
 
@@ -396,21 +398,76 @@ class BertJoCPretrainingDataLayer(TextDataLayer):
                  mode = "training",
                  batch_size=64,
                  **kwargs):
-        files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and mode in f]
-        files.sort()
-        num_files = len(files)
-        random.shuffle(files)
-        f_start_id = 0
-        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > num_files:
-            remainder = torch.distributed.get_world_size() % num_files
-            data_file = files[(f_start_id*torch.distributed.get_world_size()+torch.distributed.get_rank() + remainder*f_start_id)%num_files]
-        else:
-            data_file = files[f_start_id%num_files]
-        kwargs['batch_size'] = batch_size
-        dataset_params = {'input_file': data_file,
-                          'max_pred_length': max_pred_length
-                        }
-        super().__init__(BertJoCPretrainingDataset, dataset_params, **kwargs)
+
+        self.files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and mode in f]
+        self.files.sort()
+        self.num_files = len(self.files)
+        self.mode = mode
+        if self.mode == "training":
+            random.shuffle(self.files)
+        self.f_start_id = 0
+        self.batch_size = batch_size
+        self.max_pred_length = max_pred_length
+        self.batch_size = batch_size
+
+        total_length = 0
+        for f in self.files:
+            fp = h5py.File(f, 'r')
+            total_length += len(fp['input_ids'])
+            fp.close()
+        self.total_length = total_length
+        super().__init__(**kwargs)
+
+
+    def _collate_fn(self, x):
+
+        # import ipdb; ipdb.set_trace()
+        num_components = len(x[0])
+        components = [[] for _ in range(num_components)]
+        batch_size = len(x)
+
+        for i in range(batch_size):
+            for j in range(num_components):
+                components[j].append(x[i][j])
+        
+        src_ids, src_segment_ids, src_mask, tgt_ids, tgt_mask, sent_ids = [np.stack(x, axis=0) for x in components]
+        src_ids = torch.Tensor(src_ids).long().to(self._device)
+        src_segment_ids = torch.Tensor(src_segment_ids).long().to(self._device)
+        src_mask = torch.Tensor(src_mask).float().to(self._device)
+        tgt_ids = torch.Tensor(tgt_ids).long().to(self._device)
+        tgt_mask = torch.Tensor(tgt_mask).float().to(self._device)
+        sent_ids = torch.Tensor(sent_ids).long().to(self._device)
+        return src_ids, src_segment_ids, src_mask, tgt_ids, tgt_mask, sent_ids
+
+    
+    def __len__(self):
+        return self.total_length
+
+
+    @property
+    def dataset(self):
+        return None
+    
+
+    @property
+    def data_iterator(self):
+        if self.mode == "training":
+            random.shuffle(self.files)
+        for f_id in range(self.f_start_id, self.num_files):
+            
+            data_file = self.files[f_id]
+            train_data = BertJoCPretrainingDataset(input_file=data_file, max_pred_length = self.max_pred_length)
+            if self._placement == nemo.core.DeviceType.AllGpu:
+                train_sampler = pt_data.distributed.DistributedSampler(train_data)
+                train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
+            else:
+                sampler = pt_data.RandomSampler(train_data)
+                train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
+            
+            for x in train_dataloader:
+                yield x
+
+
 
 class BertPretrainingDataLayer(TextDataLayer):
     """

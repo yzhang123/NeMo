@@ -295,23 +295,10 @@ class BertPretrainingDataset(Dataset):
         padding_length = max(0, self.max_seq_length - len(input_ids))
         if padding_length > 0:
             input_ids.extend([self.pad_id] * padding_length)
-            print("output_ids before", output_ids)
             output_ids.extend([self.pad_id] * padding_length)
             output_mask.extend([0] * padding_length)
 
         # TODO: wrap the return value with () for consistent style.
-
-        # print("input_ids", np.asarray(input_ids).shape)
-        # print(input_ids)
-        # print("input_type_ids", np.asarray(input_type_ids).shape)
-        # print(input_type_ids)
-        # print("output_ids", np.asarray(output_ids).shape)
-        # print(output_ids)
-        # print("output_mask", np.asarray(output_mask).shape)
-        # print(output_mask)
-        # print(sum(np.asarray(output_mask)))
-        # print("is_next", np.asarray(is_next).shape)
-        # print(is_next)
 
         return np.array(input_ids), input_type_ids,\
             np.array(input_mask, dtype=np.float32), np.array(output_ids),\

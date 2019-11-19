@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
 
 from nemo.backends.pytorch.nm import TrainableNM
 
@@ -544,7 +545,8 @@ class PtActions(Actions):
                     )
                 else:
                     eval_dataloader = dl_nm.data_iterator
-                eval_dataloader.sampler.set_epoch(0)
+                if hasattr(eval_dataloader, 'sampler'):
+                    eval_dataloader.sampler.set_epoch(0)
             else:  # Not distributed
                 if dl_nm.dataset is not None:
                     # Todo: remove local_parameters
@@ -570,14 +572,16 @@ class PtActions(Actions):
             dl_device = dl_nm._device
 
             # Evaluation mini-batch for loop
-            num_batches = len(eval_dataloader)
-            for epoch_i, data in enumerate(eval_dataloader, 0):
-                if verbose and (
-                        num_batches < 10 or (
-                        epoch_i % int(num_batches / 10) == 0)
-                ):
-                    print(
-                        f"Evaluating batch {epoch_i} out of {num_batches}")
+            # num_batches = len(eval_dataloader)
+            for epoch_i, data in enumerate(tqdm(eval_dataloader, 0)):
+                if epoch_i > 10:
+                    break
+                # if verbose and (
+                #         num_batches < 10 or (
+                #         epoch_i % int(num_batches / 10) == 0)
+                # ):
+                #     print(
+                #         f"Evaluating batch {epoch_i} out of {num_batches}")
                 tensors = []
                 if isinstance(data, torch.Tensor):
                     data = (data,)
@@ -1132,12 +1136,14 @@ class PtActions(Actions):
                     self.optimizers[training_loop_opts[i]], step[1], step[2])
 
         dataNM = training_loop[0][2][0][0]
+
         if dataNM.placement == DeviceType.AllGpu:
             # if len(training_loop) > 1:
             #     raise NotImplementedError(
             #         "Distributed training does nor work with multiple "
             #         "optimizers")
             print("Doing distributed training")
+
             if t_dataset is not None:
                 train_sampler = \
                     torch.utils.data.distributed.DistributedSampler(
@@ -1154,7 +1160,10 @@ class PtActions(Actions):
                 )
             else:
                 train_dataloader = dataNM.data_iterator
-                train_sampler = train_dataloader.sampler
+                if hasattr(train_dataloader, 'sampler'):
+                    train_sampler = train_dataloader.sampler
+                else:
+                    train_sampler = None
 
             for train_iter in training_loop:
                 call_chain = train_iter[2]
