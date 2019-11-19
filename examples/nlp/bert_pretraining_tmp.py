@@ -20,20 +20,21 @@ parser.add_argument("--config_file", default=None, type=str, required=True, help
 parser.add_argument("--max_seq_length", default=128, type=int)
 parser.add_argument("--max_predictions_per_seq", default=20, type=int, help="maximum number of masked tokens to predict")
 parser.add_argument("--batch_size", default=64, type=int)
-parser.add_argument("--lr", default=0.01, type=float)
-parser.add_argument("--num_epochs", default=10, type=int)
-parser.add_argument("--num_gpus", default=1, type=int)
-parser.add_argument("--eval_batch_size", default=16, type=int)
-parser.add_argument("--lr_policy", default="CosineAnnealing", type=str)
-parser.add_argument("--lr_warmup_proportion", default=0.05, type=float)
-parser.add_argument("--optimizer", default="novograd", type=str)
-parser.add_argument("--beta1", default=0.95, type=float)
-parser.add_argument("--beta2", default=0.25, type=float)
+parser.add_argument("--lr", default=0.0000875, type=float)
+parser.add_argument("--num_epochs", default=40, type=int)
+parser.add_argument("--num_gpus", default=16, type=int)
+parser.add_argument("--eval_batch_size", default=64, type=int)
+parser.add_argument("--batches_per_step", default=1, type=int)
+parser.add_argument("--lr_policy", default="WarmupAnnealing", type=str)
+parser.add_argument("--lr_warmup_proportion", default=0.01, type=float)
+parser.add_argument("--optimizer", default="adam", type=str)
+parser.add_argument("--beta1", default=0.9, type=float)
+parser.add_argument("--beta2", default=0.999, type=float)
 parser.add_argument("--amp_opt_level",
                     default="O0",
                     type=str,
                     choices=["O0", "O1", "O2"])
-parser.add_argument("--weight_decay", default=0.0, type=float)
+parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument("--bert_checkpoint", default=None, type=str,
                     help="Path to model checkpoint")
 parser.add_argument("--vocab_size", default=3200, type=int)
@@ -48,7 +49,7 @@ parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
 parser.add_argument("--dataset_name", default="wikitext-2", type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
-parser.add_argument("--save_step_freq", default=-1, type=int)
+parser.add_argument("--save_step_freq", default=1000, type=int)
 parser.add_argument("--pretrained_bert_model", default="bert-base-uncased",
                     type=str, help="Name of the pre-trained model")
 args = parser.parse_args()
@@ -156,15 +157,16 @@ lr_policy_fn = get_lr_policy(args.lr_policy,
                              total_steps=args.num_epochs * steps_per_epoch,
                              warmup_ratio=args.lr_warmup_proportion)
 
-config_path = f'{nf.checkpoint_dir}/bert-config.json'
-if not os.path.exists(config_path):
-    bert_model.config.to_json_file(config_path)
+# config_path = f'{nf.checkpoint_dir}/bert-config.json'
+# if not os.path.exists(config_path):
+#     bert_model.config.to_json_file(config_path)
 
 # define and launch training algorithm (optimizer)
 nf.train(tensors_to_optimize=[train_loss],
          lr_policy=lr_policy_fn,
          callbacks=[train_callback, eval_callback, ckpt_callback],
          optimizer=args.optimizer,
+         batches_per_step=args.batches_per_step,
          optimization_params={"batch_size": args.batch_size,
                               "num_epochs": args.num_epochs,
                               "lr": args.lr,
