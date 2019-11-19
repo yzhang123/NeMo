@@ -27,7 +27,7 @@ parser.add_argument("--eval_batch_size", default=64, type=int)
 parser.add_argument("--batches_per_step", default=1, type=int)
 parser.add_argument("--lr_policy", default="WarmupAnnealing", type=str)
 parser.add_argument("--lr_warmup_proportion", default=0.01, type=float)
-parser.add_argument("--optimizer", default="adam", type=str)
+parser.add_argument("--optimizer", default="adam_w", type=str)
 parser.add_argument("--beta1", default=0.9, type=float)
 parser.add_argument("--beta2", default=0.999, type=float)
 parser.add_argument("--amp_opt_level",
@@ -82,7 +82,6 @@ tokenizer = NemoBertTokenizer(args.pretrained_bert_model)
 bert_model = nemo_nlp.huggingface.BERT(
 **config.to_dict(),
 factory=nf)
-
 
 
 
