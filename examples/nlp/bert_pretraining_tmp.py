@@ -47,6 +47,7 @@ parser.add_argument("--num_hidden_layers", default=12, type=int)
 parser.add_argument("--num_attention_heads", default=12, type=int)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
 parser.add_argument("--dataset_name", default="wikitext-2", type=str)
+parser.add_argument("--load_dir", default=None, type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
 parser.add_argument("--save_step_freq", default=1000, type=int)
@@ -69,17 +70,20 @@ config = BertConfig.from_json_file(args.config_file)
 # Padding for divisibility by 8
 # if config.vocab_size % 8 != 0:
 #     config.vocab_size += 8 - (config.vocab_size % 8)
-if args.bert_checkpoint is None:
-    """ Use this if you're using a standard BERT model.
-    To see the list of pretrained models, call:
-    nemo_nlp.huggingface.BERT.list_pretrained_models()
-    """
-    tokenizer = NemoBertTokenizer(args.pretrained_bert_model)
-    # model = nemo_nlp.huggingface.BERT(
-    #     pretrained_model_name=args.pretrained_bert_model)
-    bert_model = nemo_nlp.huggingface.BERT(
-    **config.to_dict(),
-    factory=nf)
+
+
+""" Use this if you're using a standard BERT model.
+To see the list of pretrained models, call:
+nemo_nlp.huggingface.BERT.list_pretrained_models()
+"""
+tokenizer = NemoBertTokenizer(args.pretrained_bert_model)
+# model = nemo_nlp.huggingface.BERT(
+#     pretrained_model_name=args.pretrained_bert_model)
+bert_model = nemo_nlp.huggingface.BERT(
+**config.to_dict(),
+factory=nf)
+
+
 
 
 """ create necessary modules for the whole translation pipeline, namely
@@ -150,6 +154,7 @@ eval_callback = nemo.core.EvaluatorCallback(
 
 ckpt_callback = nemo.core.CheckpointCallback(folder=nf.checkpoint_dir,
                                              epoch_freq=args.save_epoch_freq,
+                                             load_from_folder=args.load_dir,
                                              step_freq=args.save_step_freq)
 
 # define learning rate decay policy
