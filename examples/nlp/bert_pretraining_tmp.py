@@ -17,14 +17,15 @@ parser = argparse.ArgumentParser(description='BERT pretraining')
 parser.add_argument("--local_rank", default=None, type=int)
 parser.add_argument("--config_file", default=None, type=str, required=True, help="The BERT model config")
 
-parser.add_argument("--max_seq_length", default=128, type=int)
-parser.add_argument("--max_predictions_per_seq", default=20, type=int, help="maximum number of masked tokens to predict")
-parser.add_argument("--batch_size", default=64, type=int)
-parser.add_argument("--lr", default=0.0000875, type=float)
+parser.add_argument("--max_predictions_per_seq", default=20, type=int, required=True, help="maximum number of masked tokens to predict")
+parser.add_argument("--batch_size", default=64, required=True, type=int)
+parser.add_argument("--lr", default=0.0000875, required=True, type=float)
 parser.add_argument("--num_epochs", default=40, type=int)
-parser.add_argument("--num_gpus", default=16, type=int)
+parser.add_argument("--total_iterations_per_gpu", default=-1, type=int)
+parser.add_argument("--num_gpus", default=16, required=True, type=int)
 parser.add_argument("--eval_batch_size", default=64, type=int)
 parser.add_argument("--batches_per_step", default=1, type=int)
+parser.add_argument("--batches_per_step_eval", default=1, type=int)
 parser.add_argument("--lr_policy", default="WarmupAnnealing", type=str)
 parser.add_argument("--lr_warmup_proportion", default=0.01, type=float)
 parser.add_argument("--optimizer", default="adam_w", type=str)
@@ -35,19 +36,8 @@ parser.add_argument("--amp_opt_level",
                     type=str,
                     choices=["O0", "O1", "O2"])
 parser.add_argument("--weight_decay", default=0.01, type=float)
-parser.add_argument("--bert_checkpoint", default=None, type=str,
-                    help="Path to model checkpoint")
-parser.add_argument("--vocab_size", default=3200, type=int)
-parser.add_argument("--sample_size", default=1e7, type=int)
-parser.add_argument("--mask_probability", default=0.15, type=float)
-parser.add_argument("--short_seq_prob", default=0.1, type=float)
-parser.add_argument("--hidden_size", default=768, type=int)
-parser.add_argument("--intermediate_size", default=3072, type=int)
-parser.add_argument("--num_hidden_layers", default=12, type=int)
-parser.add_argument("--num_attention_heads", default=12, type=int)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
 parser.add_argument("--data_dir_eval", default=None, type=str)
-parser.add_argument("--dataset_name", default="wikitext-2", type=str)
 parser.add_argument("--load_dir", default=None, type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
@@ -109,11 +99,11 @@ mlm_classifier.mlp.last_linear_layer.weight = \
     bert_model.bert.embeddings.word_embeddings.weight
 
 
-def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode):
+def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode, batches_per_step=1):
     data_layer = nemo_nlp.BertJoCPretrainingDataLayer(data_file,
                                                    max_predictions_per_seq,
                                                    batch_size=batch_size, mode=mode)
-    steps_per_epoch = len(data_layer) // (batch_size * args.num_gpus)
+    steps_per_epoch = len(data_layer) // (batch_size * args.num_gpus * batches_per_step)
 
     input_ids, input_type_ids, input_mask, \
         output_ids, output_mask, nsp_labels = data_layer()
@@ -134,10 +124,10 @@ def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode):
 
 train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
                                                  args.max_predictions_per_seq,
-                                                 args.batch_size, mode="training")
+                                                 args.batch_size, mode="training", batches_per_step=args.batches_per_step)
 eval_loss, eval_tensors, _ = create_pipeline(args.data_dir_eval,
                                             args.max_predictions_per_seq,
-                                             args.eval_batch_size, mode="test")
+                                             args.eval_batch_size, mode="test", batches_per_step=args.batches_per_step_eval)
 
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
@@ -159,9 +149,16 @@ ckpt_callback = nemo.core.CheckpointCallback(folder=nf.checkpoint_dir,
                                              step_freq=args.save_step_freq)
 
 # define learning rate decay policy
-lr_policy_fn = get_lr_policy(args.lr_policy,
-                             total_steps=args.num_epochs * steps_per_epoch,
-                             warmup_ratio=args.lr_warmup_proportion)
+if args.total_iterations_per_gpu < 0:
+    print("using num_epochs for lr schedule", args.num_epochs)
+    lr_policy_fn = get_lr_policy(args.lr_policy,
+                                total_steps=args.num_epochs * steps_per_epoch,
+                                warmup_ratio=args.lr_warmup_proportion)
+else:
+    print("using total_iterations_per_gpu for lr schedule", args.total_iterations_per_gpu)
+    lr_policy_fn = get_lr_policy(args.lr_policy,
+                                total_steps=args.total_iterations_per_gpu,
+                                warmup_ratio=args.lr_warmup_proportion)
 
 # config_path = f'{nf.checkpoint_dir}/bert-config.json'
 # if not os.path.exists(config_path):
