@@ -454,15 +454,15 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
         if self.mode == "training":
             random.shuffle(self.files)
         for f_id in range(self.f_start_id, self.num_files):
-            
+            print("open file", f_id, self.files[f_id]) 
             data_file = self.files[f_id]
             train_data = BertJoCPretrainingDataset(input_file=data_file, max_pred_length = self.max_pred_length)
-            if self._placement == nemo.core.DeviceType.AllGpu:
-                train_sampler = pt_data.distributed.DistributedSampler(train_data)
-                train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
-            else:
-                sampler = pt_data.RandomSampler(train_data)
-                train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
+            #if self._placement == nemo.core.DeviceType.AllGpu:
+            #    train_sampler = pt_data.distributed.DistributedSampler(train_data)
+            #    train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
+            #else:
+            train_sampler = pt_data.RandomSampler(train_data)
+            train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
             
             for x in train_dataloader:
                 yield x
