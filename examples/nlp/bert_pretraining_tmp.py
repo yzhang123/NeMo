@@ -46,6 +46,7 @@ parser.add_argument("--intermediate_size", default=3072, type=int)
 parser.add_argument("--num_hidden_layers", default=12, type=int)
 parser.add_argument("--num_attention_heads", default=12, type=int)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
+parser.add_argument("--data_dir_eval", default=None, type=str)
 parser.add_argument("--dataset_name", default="wikitext-2", type=str)
 parser.add_argument("--load_dir", default=None, type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
@@ -57,7 +58,8 @@ args = parser.parse_args()
 
 # work_dir = f'{args.work_dir}/{args.upper()}'
 
-
+if args.data_dir_eval is None:
+    args.data_dir_eval = args.data_dir
 nf = nemo.core.NeuralModuleFactory(backend=nemo.core.Backend.PyTorch,
                                    local_rank=args.local_rank,
                                    optimization_level=args.amp_opt_level,
@@ -133,7 +135,7 @@ def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode):
 train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
                                                  args.max_predictions_per_seq,
                                                  args.batch_size, mode="training")
-eval_loss, eval_tensors, _ = create_pipeline(args.data_dir,
+eval_loss, eval_tensors, _ = create_pipeline(args.data_dir_eval,
                                             args.max_predictions_per_seq,
                                              args.eval_batch_size, mode="test")
 
