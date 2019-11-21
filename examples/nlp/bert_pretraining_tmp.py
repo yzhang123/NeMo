@@ -21,6 +21,7 @@ parser.add_argument("--max_predictions_per_seq", default=20, type=int, required=
 parser.add_argument("--batch_size", default=64, required=True, type=int)
 parser.add_argument("--lr", default=0.0000875, required=True, type=float)
 parser.add_argument("--num_epochs", default=40, type=int)
+parser.add_argument("--gradient_predivide", action="store_true", default=False, help="use gradient predivide")
 parser.add_argument("--total_iterations_per_gpu", default=-1, type=int)
 parser.add_argument("--num_gpus", default=16, required=True, type=int)
 parser.add_argument("--eval_batch_size", default=64, type=int)
@@ -170,7 +171,7 @@ nf.train(tensors_to_optimize=[train_loss],
          callbacks=[train_callback, eval_callback, ckpt_callback],
          optimizer=args.optimizer,
          batches_per_step=args.batches_per_step,
-         gradient_predivide=True,
+         gradient_predivide=args.gradient_predivide,
          optimization_params={"batch_size": args.batch_size,
                               "num_epochs": args.num_epochs,
                               "lr": args.lr,
