@@ -537,7 +537,7 @@ class NeuralModuleFactory(object):
             lr_policy=lr_policy,
             batches_per_step=batches_per_step,
             stop_on_nan_loss=stop_on_nan_loss,
-            gradient_predivide=False,
+            gradient_predivide=gradient_predivide,
             synced_batchnorm=synced_batchnorm,
             synced_batchnorm_groupsize=synced_batchnorm_groupsize)
 
