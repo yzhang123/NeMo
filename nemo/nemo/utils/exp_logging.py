@@ -62,6 +62,7 @@ class ExpManager:
             self,
             work_dir=None,
             local_rank=None,
+            global_rank=None,
             use_tb=True,
             exist_ok=True,
             ckpt_dir=None,
@@ -69,6 +70,7 @@ class ExpManager:
             files_to_copy=None,
             add_time=True):
         self.local_rank = local_rank if local_rank is not None else 0
+        self.global_rank = global_rank if global_rank is not None else 0
         self.logger = None
         self.log_file = None
         self.tb_writer = None
@@ -84,9 +86,10 @@ class ExpManager:
         # Create work_dir if specified
         if work_dir:
             self.work_dir = work_dir
+            self.work_dir = os.path.join(self.work_dir, f"rank_{self.global_rank}")
             if add_time:
                 self.work_dir = os.path.join(
-                    work_dir, time.strftime('%Y%m%d-%H%M%S'))
+                    self.work_dir, time.strftime('%Y%m%d-%H%M%S'))
             self.make_dir(self.work_dir, exist_ok)
             if use_tb:
                 self.get_tb_writer(exist_ok=exist_ok)
