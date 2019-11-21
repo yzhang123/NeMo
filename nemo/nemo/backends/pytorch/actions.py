@@ -1010,6 +1010,7 @@ class PtActions(Actions):
               batches_per_step=None,
               stop_on_nan_loss=False,
               synced_batchnorm=False,
+              gradient_predivide=False,
               synced_batchnorm_groupsize=0):
         if not optimization_params:
             optimization_params = {}
@@ -1172,7 +1173,10 @@ class PtActions(Actions):
                     pmodule = self.module_reference_table[key][1]
                     if (not isinstance(pmodule, DDP) and
                             isinstance(pmodule, torch.nn.Module)):
-                        pmodule = DDP(pmodule)
+                        print("gradient_predivide_factor=", torch.distributed.get_world_size() if gradient_predivide else 1)
+                        pmodule = DDP(pmodule, gradient_predivide_factor=torch.distributed.get_world_size() if gradient_predivide else 1)
+
+
 
                     # Convert batchnorm modules to synced if applicable
                     if (synced_batchnorm and
@@ -1247,6 +1251,8 @@ class PtActions(Actions):
                     adjusted_lr = lr_policy(
                         optimization_params["lr"], self.step, self.epoch_num
                     )
+                    if self.step % 25 == 0:
+                        print("step: {} lr: {}".format( self.step, adjusted_lr))
                     for param_group in curr_optimizer.param_groups:
                         param_group["lr"] = adjusted_lr
                 if self.tb_writer is not None:
