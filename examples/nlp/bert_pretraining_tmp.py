@@ -141,7 +141,6 @@ eval_callback = nemo.core.EvaluatorCallback(
     eval_tensors=eval_tensors,
     user_iter_callback=eval_iter_callback,
     user_epochs_done_callback=eval_epochs_done_callback,
-    eval_step=steps_per_epoch,
     tb_writer=nf.tb_writer)
 
 ckpt_callback = nemo.core.CheckpointCallback(folder=nf.checkpoint_dir,

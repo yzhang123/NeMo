@@ -417,6 +417,7 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
             except:
                 print("could not open", f)
             total_length += len(fp['input_ids'])
+            print("total_length:", total_length)
             fp.close()
         self.total_length = total_length
         super().__init__(**kwargs)
