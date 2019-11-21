@@ -412,7 +412,10 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
 
         total_length = 0
         for f in self.files:
-            fp = h5py.File(f, 'r')
+            try:
+                fp = h5py.File(f, 'r')
+            except:
+                print("could not open", f)
             total_length += len(fp['input_ids'])
             fp.close()
         self.total_length = total_length
