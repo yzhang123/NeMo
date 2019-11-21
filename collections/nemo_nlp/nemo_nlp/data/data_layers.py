@@ -399,7 +399,7 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
                  batch_size=64,
                  **kwargs):
 
-        self.files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f)) and mode in f]
+        self.files = [os.path.join(dataset, f) for f in os.listdir(dataset) if os.path.isfile(os.path.join(dataset, f))]
         self.files.sort()
         self.num_files = len(self.files)
         self.mode = mode
