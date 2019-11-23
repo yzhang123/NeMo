@@ -110,8 +110,8 @@ class PolyAnnealing(WarmupPolicy):
     def _get_lr(self, initial_lr, step, epoch):
         return _poly_annealing(
             initial_lr=initial_lr,
-            step=step - self.warmup_steps,
-            total_steps=self.total_steps - self.warmup_steps,
+            step=step,
+            total_steps=self.total_steps,
             min_lr=self.min_lr
         )
 
