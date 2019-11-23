@@ -1,5 +1,5 @@
 __all__ = ['WarmupPolicy', 'SquareAnnealing', 'CosineAnnealing',
-           'WarmupAnnealing', 'InverseSquareRootAnnealing']
+           'WarmupAnnealing', 'InverseSquareRootAnnealing', 'PolyAnnealing']
 
 import math
 from abc import ABC, abstractmethod
@@ -80,6 +80,12 @@ def _square_annealing(initial_lr, step, total_steps, min_lr):
     return out_lr
 
 
+def _poly_annealing(initial_lr, step, total_steps, min_lr):
+    mult = ((total_steps - step) / total_steps) ** 0.5
+    out_lr = initial_lr * mult
+    out_lr = max(out_lr, min_lr)
+    return out_lr
+
 class SquareAnnealing(WarmupPolicy):
     def __init__(self, total_steps, min_lr=1e-5, **kwargs):
         super().__init__(total_steps=total_steps, **kwargs)
@@ -91,6 +97,21 @@ class SquareAnnealing(WarmupPolicy):
             initial_lr=initial_lr,
             step=step - self.warmup_steps,
             total_steps=self.total_steps - self.warmup_steps,
+            min_lr=self.min_lr
+        )
+
+
+class PolyAnnealing(WarmupPolicy):
+    def __init__(self, total_steps, min_lr=0, **kwargs):
+        super().__init__(total_steps=total_steps, **kwargs)
+
+        self.min_lr = min_lr
+
+    def _get_lr(self, initial_lr, step, epoch):
+        return _poly_annealing(
+            initial_lr=initial_lr,
+            step=step,
+            total_steps=self.total_steps,
             min_lr=self.min_lr
         )
 

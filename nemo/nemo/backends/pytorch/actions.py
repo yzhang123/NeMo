@@ -10,7 +10,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
-
+from apex.optimizers import FusedLAMB
 from nemo.backends.pytorch.nm import TrainableNM
 
 from .module_wrapper import TrainableNeuralModuleWrapper
@@ -237,7 +237,6 @@ class PtActions(Actions):
         Returns:
             Optimizer
         """
-
         optimizer_instance = None
         optimizer_class = None
         if isinstance(optimizer, str):
@@ -317,6 +316,7 @@ class PtActions(Actions):
                     params=params_to_optimize,
                     lr=lr,
                     weight_decay=optimization_params.get("weight_decay", 0.0),
+                    betas=optimization_params.get("betas", (0.9, 0.999))
                 )
             elif optimizer_class.lower() == "novograd":
                 optimizer = Novograd(
@@ -341,6 +341,11 @@ class PtActions(Actions):
                     params_to_optimize,
                     lr=lr,
                     weight_decay=optimization_params.get("weight_decay", 0.0),
+                )
+            elif optimizer_class.lower() == "fused_lamb":
+                optimizer = FusedLAMB(
+                    params_to_optimize,
+                    lr=lr,
                 )
             else:
                 raise ValueError(
@@ -983,12 +988,13 @@ class PtActions(Actions):
         # SimpleLossLoggerCallback.tensors
         if logging_callchain:
             for module in logging_callchain:
+                # only nnModule/TrainableModule
                 self.modules.add(module[0])
 
         # Else grab all callchains from training_loop
         else:
             for step in training_loop:
-                for module in step[2]:
+                for module in step[2]: # opt_call_chain
                     self.modules.add(module[0])
 
         # Lastly, grab all eval modules
@@ -1044,11 +1050,24 @@ class PtActions(Actions):
                 )
 
             # Extract trainable weights which will be optimized
-            params_list = [
-                p[0].parameters() for p in opt_call_chain
-                if isinstance(p[0], TrainableNM) or p[0].is_trainable()
+            no_decay = ['bias', 'gamma', 'beta', 'LayerNorm'] 
+            params_list_0 = [
+                x for p in opt_call_chain if isinstance(p[0], TrainableNM) or p[0].is_trainable()  for n, x in p[0].named_parameters() 
+                if not any(nd in n for nd in no_decay)
             ]
-            params_to_optimize = itertools.chain(*params_list)
+            params_list_1 = [
+                x for p in opt_call_chain if isinstance(p[0], TrainableNM) or p[0].is_trainable()  for n, x in p[0].named_parameters() 
+                if any(nd in n for nd in no_decay)
+            ]
+            # params_list= [
+            #     x for p in opt_call_chain if isinstance(p[0], TrainableNM) or p[0].is_trainable()  for n, x in p[0].named_parameters() 
+            # ]
+
+            # params_to_optimize = itertools.chain(*params_list)
+            params_to_optimize = [
+                {'params': params_list_0, 'weight_decay': optimization_params['weight_decay']},
+                {'params': params_list_1, 'weight_decay': 0.0}]
+
 
             # Setup optimizer instance. By default it is SGD
             optimizer_instance = None
@@ -1112,7 +1131,8 @@ class PtActions(Actions):
                     logger_step_freq = callback._step_freq
                     logging_tensors = callback.tensors
                     all_tensors = logging_tensors
-                    for step in training_loop:
+                    for step in training_loop: 
+                        # step[1] is opt_call_chain
                         all_tensors = all_tensors + step[1]
                     logging_callchain, _ = \
                         self.__get_top_sorted_modules_and_dataloader(
@@ -1124,8 +1144,8 @@ class PtActions(Actions):
         if self._optim_level in AmpOptimizations:
             # Store mapping of self.optimizers to optimizer in callchain
             training_loop_opts = []
-            for opt in training_loop:
-                training_loop_opts.append(self.optimizers.index(opt[0]))
+            for step in training_loop:
+                training_loop_opts.append(self.optimizers.index(step[0]))
             self.optimizers = self.__initialize_amp(
                 optimizer=self.optimizers,
                 optim_level=self._optim_level,

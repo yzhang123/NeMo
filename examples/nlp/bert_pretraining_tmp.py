@@ -43,6 +43,7 @@ parser.add_argument("--load_dir", default=None, type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
 parser.add_argument("--save_step_freq", default=1000, type=int)
+parser.add_argument("--eval_step_freq", default=100, type=int)
 parser.add_argument("--pretrained_bert_model", default="bert-base-uncased",
                     type=str, help="Name of the pre-trained model")
 args = parser.parse_args()
@@ -141,7 +142,7 @@ eval_callback = nemo.core.EvaluatorCallback(
     eval_tensors=eval_tensors,
     user_iter_callback=eval_iter_callback,
     user_epochs_done_callback=eval_epochs_done_callback,
-    eval_step=steps_per_epoch,
+    eval_step=args.eval_step_freq,
     tb_writer=nf.tb_writer)
 
 ckpt_callback = nemo.core.CheckpointCallback(folder=nf.checkpoint_dir,
@@ -175,4 +176,5 @@ nf.train(tensors_to_optimize=[train_loss],
          optimization_params={"batch_size": args.batch_size,
                               "num_epochs": args.num_epochs,
                               "lr": args.lr,
+                              "betas": (args.beta1, args.beta2),
                               "weight_decay": args.weight_decay})
