@@ -131,9 +131,9 @@ def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode, batche
 train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
                                                  args.max_predictions_per_seq,
                                                  args.batch_size, mode="training", batches_per_step=args.batches_per_step)
-eval_loss, eval_tensors, _ = create_pipeline(args.data_dir_eval,
-                                            args.max_predictions_per_seq,
-                                             args.eval_batch_size, mode="test", batches_per_step=args.batches_per_step_eval)
+# eval_loss, eval_tensors, _ = create_pipeline(args.data_dir_eval,
+#                                             args.max_predictions_per_seq,
+#                                              args.eval_batch_size, mode="test", batches_per_step=args.batches_per_step_eval)
 
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
@@ -142,12 +142,12 @@ train_callback = nemo.core.SimpleLossLoggerCallback(
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
 
-eval_callback = nemo.core.EvaluatorCallback(
-    eval_tensors=eval_tensors,
-    user_iter_callback=eval_iter_callback,
-    user_epochs_done_callback=eval_epochs_done_callback,
-    eval_step=args.eval_step_freq,
-    tb_writer=nf.tb_writer)
+# eval_callback = nemo.core.EvaluatorCallback(
+#     eval_tensors=eval_tensors,
+#     user_iter_callback=eval_iter_callback,
+#     user_epochs_done_callback=eval_epochs_done_callback,
+#     eval_step=args.eval_step_freq,
+#     tb_writer=nf.tb_writer)
 
 ckpt_callback = nemo.core.CheckpointCallback(folder=nf.checkpoint_dir,
                                              epoch_freq=args.save_epoch_freq,
@@ -173,7 +173,7 @@ else:
 # define and launch training algorithm (optimizer)
 nf.train(tensors_to_optimize=[train_loss],
          lr_policy=lr_policy_fn,
-         callbacks=[train_callback, eval_callback, ckpt_callback],
+         callbacks=[train_callback, ckpt_callback],
          optimizer=args.optimizer,
          batches_per_step=args.batches_per_step,
          gradient_predivide=args.gradient_predivide,
