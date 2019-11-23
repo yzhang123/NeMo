@@ -36,6 +36,9 @@ parser.add_argument("--amp_opt_level",
                     default="O0",
                     type=str,
                     choices=["O0", "O1", "O2"])
+parser.add_argument("--loading_algo",
+                    default="one_for_all",
+                    type=str)
 parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
 parser.add_argument("--data_dir_eval", default=None, type=str)
@@ -104,6 +107,7 @@ mlm_classifier.mlp.last_linear_layer.weight = \
 def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode, batches_per_step=1):
     data_layer = nemo_nlp.BertJoCPretrainingDataLayer(data_file,
                                                    max_predictions_per_seq,
+                                                   algo = args.loading_algo,
                                                    batch_size=batch_size, mode=mode)
     steps_per_epoch = len(data_layer) // (batch_size * args.num_gpus * batches_per_step)
 
