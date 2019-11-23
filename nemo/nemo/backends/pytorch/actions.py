@@ -1271,7 +1271,7 @@ class PtActions(Actions):
                     adjusted_lr = lr_policy(
                         optimization_params["lr"], self.step, self.epoch_num
                     )
-                    if self.step % 25 == 0:
+                    if self.step % 25 == 0 and torch.distributed.get_rank() == 0:
                         print("step: {} lr: {}".format( self.step, adjusted_lr))
                     for param_group in curr_optimizer.param_groups:
                         param_group["lr"] = adjusted_lr
