@@ -396,6 +396,7 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
                  dataset,
                  max_pred_length,
                  mode = "training",
+                 algo = "one_for_all",
                  batch_size=64,
                  **kwargs):
 
@@ -403,8 +404,16 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
         self.files.sort()
         self.num_files = len(self.files)
         self.mode = mode
+        self.algo = algo
         if self.mode == "training":
-            random.shuffle(self.files)
+            if self.algo == "one_for_all":
+                seed_scalar = torch.tensor(0, dtype=torch.int).cuda()
+                if torch.distributed.get_rank() == 0:
+                    seed_scalar = torch.tensor(random.randint(0, 100000), dtype=torch.int).cuda()
+                torch.distributed.broadcast(seed_scalar, 0)
+                seed_scalar = int(seed_scalar.cpu().numpy())
+                print("seed", seed_scalar)
+                random.seed(seed_scalar)
         self.f_start_id = 0
         self.batch_size = batch_size
         self.max_pred_length = max_pred_length
@@ -456,6 +465,8 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
     def data_iterator(self):
         if self.mode == "training":
             random.shuffle(self.files)
+
+
         for f_id in range(self.f_start_id, self.num_files):
             print("open file", f_id, self.files[f_id]) 
             data_file = self.files[f_id]
@@ -464,7 +475,10 @@ class BertJoCPretrainingDataLayer(DataLayerNM):
             #    train_sampler = pt_data.distributed.DistributedSampler(train_data)
             #    train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
             #else:
-            train_sampler = pt_data.RandomSampler(train_data)
+            if self.algo == "one_for_all":
+                train_sampler = pt_data.distributed.DistributedSampler(train_data)
+            else:
+                train_sampler = pt_data.RandomSampler(train_data)
             train_dataloader = pt_data.DataLoader(dataset=train_data, batch_size=self.batch_size, collate_fn=self._collate_fn, shuffle=train_sampler is None, sampler=train_sampler)
             
             for x in train_dataloader:
