@@ -1293,9 +1293,11 @@ class PtActions(Actions):
                 for d in data:
                     if isinstance(d, torch.Tensor):
                         tensors.append(d.to(dl_device))
+                        
+                        print('step {} rank {} data {}'.format(self.step, torch.distributed.get_rank(), d.float().mean()), d.shape)
                     else:
                         tensors.append(d)
-
+                        
                 registered_tensors = {
                     t.unique_name: d for t, d in
                     zip(curr_call_chain[0][2].values(), tensors)
@@ -1317,11 +1319,12 @@ class PtActions(Actions):
                             registered_tensors[tensor.unique_name]).any():
                         if stop_on_nan_loss:
                             raise ValueError('Loss is NaN exiting')
-                        print('WARNING: Loss is NaN')
+                        print('WARNING 1: Loss is NaN')
                         curr_optimizer.zero_grad()
                         nan = True
                         break
                     final_loss += registered_tensors[tensor.unique_name]
+                print('rank {} final_loss {} len stuff {}'.format(torch.distributed.get_rank(),  final_loss.mean(), len(curr_tensors_to_optimize)))
                 if nan:
                     continue
                 if self._optim_level in AmpOptimizations \
@@ -1332,9 +1335,10 @@ class PtActions(Actions):
                             delay_unscale=disable_allreduce
                     ) as scaled_loss:
                         if torch.isnan(scaled_loss).any():
+                            print("final loss is nan?", torch.isnan(final_loss).any())
                             if stop_on_nan_loss:
                                 raise ValueError('Loss is NaN exiting')
-                            print('WARNING: Loss is NaN')
+                            print('WARNING 2: Loss is NaN')
                             curr_optimizer.zero_grad()
                             continue
                         scaled_loss.backward(
