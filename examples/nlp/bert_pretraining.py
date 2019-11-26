@@ -233,11 +233,11 @@ def create_pipeline(data_file,
     nsp_loss = nsp_loss_fn(logits=nsp_logits, labels=nsp_labels)
 
     loss = bert_loss(loss_1=mlm_loss, loss_2=nsp_loss)
-    return loss, [mlm_loss, nsp_loss], steps_per_epoch
+    return loss, mlm_loss, nsp_loss, steps_per_epoch
 
 
 if not args.preprocessed_data:
-    train_loss, _, steps_per_epoch = create_pipeline(
+    train_loss, mlm_loss, nsp_loss, steps_per_epoch = create_pipeline(
                                         data_file=data_desc.train_file,
                                         preprocessed_data=False,
                                         max_seq_length=args.max_seq_length,
@@ -247,7 +247,7 @@ if not args.preprocessed_data:
                                         batches_per_step=args.batches_per_step)
 else:
     max_pred_len = args.max_predictions_per_seq
-    train_loss, _, steps_per_epoch = create_pipeline(
+    train_loss, mlm_loss, nsp_loss, steps_per_epoch = create_pipeline(
                                       data_file=args.data_dir,
                                       preprocessed_data=True,
                                       max_predictions_per_seq=max_pred_len,
@@ -258,8 +258,8 @@ else:
 
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
-    tensors=[train_loss],
-    print_func=lambda x: nf.logger.info("Loss: {:.3f}".format(x[0].item())),
+    tensors=[train_loss, mlm_loss, nsp_loss],
+    print_func=lambda x: nf.logger.info("Total Loss: {:.3f} MLM Loss: {:.3f} NSP Loss: {:.3f}".format(x[0].item(), x[1].item(), x[2].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
 
