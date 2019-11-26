@@ -37,7 +37,7 @@ parser.add_argument("--amp_opt_level",
                     type=str,
                     choices=["O0", "O1", "O2"])
 parser.add_argument("--loading_algo",
-                    default="one_for_all",
+                    default="one_for_one",
                     type=str)
 parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument("--data_dir", default="data/lm/wikitext-2", type=str)
@@ -137,7 +137,7 @@ train_loss, mlm_loss, nsp_loss,  steps_per_epoch = create_pipeline(args.data_dir
 
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
-    tensors=[train_loss],
+    tensors=[train_loss, mlm_loss, nsp_loss],
     print_func=lambda x: print("Loss: {:.3f}  mlm Loss: {:.3f} nsp Loss: {:.3f} ".format(x[0].item(), x[1].item(), x[2].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
