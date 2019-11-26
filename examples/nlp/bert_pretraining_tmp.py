@@ -124,11 +124,11 @@ def create_pipeline(data_file, max_predictions_per_seq, batch_size, mode, batche
     nsp_loss = nsp_loss_fn(logits=nsp_logits, labels=nsp_labels)
 
     loss = bert_loss(loss_1=mlm_loss, loss_2=nsp_loss)
-    return loss, [mlm_loss, nsp_loss], steps_per_epoch
+    return loss, mlm_loss, nsp_loss, steps_per_epoch
 
 
 
-train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
+train_loss, mlm_loss, nsp_loss,  steps_per_epoch = create_pipeline(args.data_dir,
                                                  args.max_predictions_per_seq,
                                                  args.batch_size, mode="training", batches_per_step=args.batches_per_step)
 # eval_loss, eval_tensors, _ = create_pipeline(args.data_dir_eval,
@@ -138,7 +138,7 @@ train_loss, _, steps_per_epoch = create_pipeline(args.data_dir,
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
     tensors=[train_loss],
-    print_func=lambda x: print("Loss: {:.3f}".format(x[0].item())),
+    print_func=lambda x: print("Loss: {:.3f}  mlm Loss: {:.3f} nsp Loss: {:.3f} ".format(x[0].item(), x[1].item(), x[2].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
 
