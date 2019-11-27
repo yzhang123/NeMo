@@ -1189,11 +1189,26 @@ class PtActions(Actions):
                 )
 
             # Extract trainable weights which will be optimized
-            params_list = [
-                p[0].parameters() for p in opt_call_chain
-                if isinstance(p[0], TrainableNM) or p[0].is_trainable()
-            ]
-            params_to_optimize = itertools.chain(*params_list)
+            if optimizer.lower() == "fused_lamb":
+                no_decay = ['bias', 'gamma', 'beta', 'LayerNorm'] 
+                params_list_0 = [
+                    x for p in opt_call_chain if isinstance(p[0], TrainableNM) or p[0].is_trainable()  for n, x in p[0].named_parameters() 
+                    if not any(nd in n for nd in no_decay)
+                ]
+                params_list_1 = [
+                    x for p in opt_call_chain if isinstance(p[0], TrainableNM) or p[0].is_trainable()  for n, x in p[0].named_parameters() 
+                    if any(nd in n for nd in no_decay)
+                ]
+
+                params_to_optimize = [
+                    {'params': params_list_0, 'weight_decay': optimization_params['weight_decay']},
+                    {'params': params_list_1, 'weight_decay': 0.0}]
+            else:
+                params_list = [
+                    p[0].parameters() for p in opt_call_chain
+                    if isinstance(p[0], TrainableNM) or p[0].is_trainable()
+                ]
+                params_to_optimize = itertools.chain(*params_list)
 
             # Setup optimizer instance. By default it is SGD
             optimizer_instance = None
