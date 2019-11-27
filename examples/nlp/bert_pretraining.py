@@ -174,10 +174,11 @@ bert_model = nemo_nlp.huggingface.BERT(
 data layers, BERT encoder, and MLM and NSP loss functions
 """
 
-mlm_classifier = nemo_nlp.TokenClassifier(args.hidden_size,
-                                          num_classes=args.vocab_size,
-                                          activation=args.hidden_act,
-                                          log_softmax=True)
+mlm_classifier = nemo_nlp.BertTokenClassifier(
+                            args.hidden_size,
+                            num_classes=args.vocab_size,
+                            activation=args.hidden_act,
+                            log_softmax=True)
 mlm_loss_fn = nemo_nlp.MaskedLanguageModelingLossNM()
 
 nsp_classifier = nemo_nlp.SequenceClassifier(args.hidden_size,
@@ -261,7 +262,9 @@ else:
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
     tensors=[train_loss, mlm_loss, nsp_loss],
-    print_func=lambda x: nf.logger.info("Total Loss: {:.3f} MLM Loss: {:.3f} NSP Loss: {:.3f}".format(x[0].item(), x[1].item(), x[2].item())),
+    print_func=lambda x: nf.logger.info(
+        "Total Loss: {:.3f} MLM Loss: {:.3f} NSP Loss: {:.3f}".format(
+            x[0].item(), x[1].item(), x[2].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
 
