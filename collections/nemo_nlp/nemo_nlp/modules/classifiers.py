@@ -49,28 +49,32 @@ class TokenClassifier(TrainableNM):
     def __init__(self,
                  hidden_size,
                  num_classes,
-                 num_layers=2,
                  activation='relu',
                  log_softmax=True,
                  dropout=0.0,
                  use_transformer_pretrained=True):
         super().__init__()
-
+        self.dense = nn.Linear(hidden_size, hidden_size)
+        self.act = getattr(nn.functional, activation)
+        self.norm = nn.LayerNorm(hidden_size, eps=1e-12)
         self.mlp = MultiLayerPerceptron(hidden_size,
                                         num_classes,
                                         self._device,
-                                        num_layers,
-                                        activation,
-                                        log_softmax)
+                                        num_layers=1,
+                                        activation=activation,
+                                        log_softmax=log_softmax)
         self.dropout = nn.Dropout(dropout)
         if use_transformer_pretrained:
             self.apply(
                 lambda module: transformer_weights_init(module, xavier=False))
-        # self.to(self._device) # sometimes this is necessary
+        self.to(self._device) # sometimes this is necessary
 
     def forward(self, hidden_states):
         hidden_states = self.dropout(hidden_states)
-        logits = self.mlp(hidden_states)
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.act(hidden_states)
+        transform = self.norm(hidden_states)
+        logits = self.mlp(transform)
         return logits
 
 

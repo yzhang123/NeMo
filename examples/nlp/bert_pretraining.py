@@ -173,16 +173,18 @@ bert_model = nemo_nlp.huggingface.BERT(
 """ create necessary modules for the whole translation pipeline, namely
 data layers, BERT encoder, and MLM and NSP loss functions
 """
+
 mlm_classifier = nemo_nlp.TokenClassifier(args.hidden_size,
                                           num_classes=args.vocab_size,
-                                          num_layers=1,
+                                          activation=args.hidden_act,
                                           log_softmax=True)
 mlm_loss_fn = nemo_nlp.MaskedLanguageModelingLossNM()
 
 nsp_classifier = nemo_nlp.SequenceClassifier(args.hidden_size,
                                              num_classes=2,
                                              num_layers=2,
-                                             log_softmax=True)
+                                             activation='tanh',
+                                             log_softmax=False)
 nsp_loss_fn = nemo.backends.pytorch.common.CrossEntropyLoss()
 
 bert_loss = nemo_nlp.LossAggregatorNM(num_inputs=2)
