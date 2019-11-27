@@ -114,11 +114,12 @@ parser.add_argument("--load_dir", default=None, type=str)
 parser.add_argument("--work_dir", default="outputs/bert_lm", type=str)
 parser.add_argument("--save_epoch_freq", default=1, type=int)
 parser.add_argument("--save_step_freq", default=100, type=int)
+parser.add_argument("--print_step_freq", default=25, type=int)
 parser.add_argument("--config_file", default=None, type=str,
                     help="The BERT model config")
 args = parser.parse_args()
 
-print(vars(args))
+
 nf = nemo.core.NeuralModuleFactory(backend=nemo.core.Backend.PyTorch,
                                    local_rank=args.local_rank,
                                    optimization_level=args.amp_opt_level,
@@ -160,6 +161,7 @@ if not args.preprocessed_data:
                          "or use sentence-piece or nemo-bert.")
     args.vocab_size = tokenizer.vocab_size
 
+print(vars(args))
 bert_model = nemo_nlp.huggingface.BERT(
     vocab_size=args.vocab_size,
     num_hidden_layers=args.num_hidden_layers,
@@ -181,14 +183,14 @@ mlm_classifier = nemo_nlp.BertTokenClassifier(
                             log_softmax=True)
 mlm_loss_fn = nemo_nlp.MaskedLanguageModelingLossNM()
 
-nsp_classifier = nemo_nlp.SequenceClassifier(args.hidden_size,
-                                             num_classes=2,
-                                             num_layers=2,
-                                             activation='tanh',
-                                             log_softmax=False)
-nsp_loss_fn = nemo.backends.pytorch.common.CrossEntropyLoss()
+# nsp_classifier = nemo_nlp.SequenceClassifier(args.hidden_size,
+#                                              num_classes=2,
+#                                              num_layers=2,
+#                                              activation='tanh',
+#                                              log_softmax=False)
+# nsp_loss_fn = nemo.backends.pytorch.common.CrossEntropyLoss()
 
-bert_loss = nemo_nlp.LossAggregatorNM(num_inputs=2)
+# bert_loss = nemo_nlp.LossAggregatorNM(num_inputs=2)
 
 # tie weights of MLM softmax layer and embedding layer of the encoder
 mlm_classifier.mlp.last_linear_layer.weight = \
@@ -232,11 +234,11 @@ def create_pipeline(data_file,
     mlm_loss = mlm_loss_fn(logits=mlm_logits,
                            output_ids=output_ids,
                            output_mask=output_mask)
-    nsp_logits = nsp_classifier(hidden_states=hidden_states)
-    nsp_loss = nsp_loss_fn(logits=nsp_logits, labels=nsp_labels)
+    # nsp_logits = nsp_classifier(hidden_states=hidden_states)
+    # nsp_loss = nsp_loss_fn(logits=nsp_logits, labels=nsp_labels)
 
-    loss = bert_loss(loss_1=mlm_loss, loss_2=nsp_loss)
-    return loss, mlm_loss, nsp_loss, steps_per_epoch
+    loss = mlm_loss #bert_loss(loss_1=mlm_loss, loss_2=nsp_loss)
+    return loss, loss, loss, steps_per_epoch
 
 
 if not args.preprocessed_data:
@@ -258,13 +260,14 @@ else:
                                       batch_size=args.batch_size,
                                       batches_per_step=args.batches_per_step)
 
-
+print("steps per epoch", steps_per_epoch)
 # callback which prints training loss and perplexity once in a while
 train_callback = nemo.core.SimpleLossLoggerCallback(
-    tensors=[train_loss, mlm_loss, nsp_loss],
+    tensors=[train_loss],
+    step_freq=args.print_step_freq,
     print_func=lambda x: nf.logger.info(
-        "Total Loss: {:.3f} MLM Loss: {:.3f} NSP Loss: {:.3f}".format(
-            x[0].item(), x[1].item(), x[2].item())),
+        "MLM Loss: {:.3f}".format(
+            x[0].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer)
 
