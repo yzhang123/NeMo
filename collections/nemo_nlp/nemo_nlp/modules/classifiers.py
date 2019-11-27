@@ -50,13 +50,13 @@ class BertTokenClassifier(TrainableNM):
     def __init__(self,
                  hidden_size,
                  num_classes,
-                 activation='relu',
+                 activation=nn.functional.relu,
                  log_softmax=True,
                  dropout=0.0,
                  use_transformer_pretrained=True):
         super().__init__()
         self.dense = nn.Linear(hidden_size, hidden_size)
-        self.act = getattr(nn.functional, activation)
+        self.act = activation
         self.norm = nn.LayerNorm(hidden_size, eps=1e-12)
         self.mlp = MultiLayerPerceptron(hidden_size,
                                         num_classes,

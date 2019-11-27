@@ -58,12 +58,13 @@ python -m torch.distributed.launch --nproc_per_node=8 bert_pretraining.py \
 """
 import argparse
 import os
-
+import torch
 import nemo
 from nemo.utils.lr_policies import get_lr_policy
 from pytorch_transformers import BertConfig
 import nemo_nlp
 from nemo_nlp.data.datasets.utils import BERTPretrainingDataDesc
+from nemo_nlp.transformer.utils import gelu
 from nemo_nlp.utils.callbacks.bert_pretraining import \
     eval_iter_callback, eval_epochs_done_callback
 
@@ -175,11 +176,12 @@ bert_model = nemo_nlp.huggingface.BERT(
 """ create necessary modules for the whole translation pipeline, namely
 data layers, BERT encoder, and MLM and NSP loss functions
 """
+ACT2FN={"gelu": gelu, "relu": torch.nn.functional.relu}
 
 mlm_classifier = nemo_nlp.BertTokenClassifier(
                             args.hidden_size,
                             num_classes=args.vocab_size,
-                            activation=args.hidden_act,
+                            activation=ACT2FN[args.hidden_act],
                             log_softmax=True)
 mlm_loss_fn = nemo_nlp.MaskedLanguageModelingLossNM()
 
