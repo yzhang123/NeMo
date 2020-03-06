@@ -94,8 +94,6 @@ class AdamW(Optimizer):
                 beta1, beta2 = group["betas"]
 
                 state["step"] += 1
-                if group['max_grad_norm'] > 0:
-                    torch.nn.utils.clip_grad_norm_(p, group['max_grad_norm'])
 
                 # if group['weight_decay'] != 0:
                 #     grad = grad.add(group['weight_decay'], p.data)
