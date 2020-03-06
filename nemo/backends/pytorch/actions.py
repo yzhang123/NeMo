@@ -310,6 +310,7 @@ class PtActions(Actions):
                     lr=lr,
                     weight_decay=optimization_params.get("weight_decay", 0.0),
                     betas=optimization_params.get("betas", (0.9, 0.999)),
+                    max_grad_norm=optimization_params.get("max_grad_norm", 0.0)
                 )
             elif optimizer_class.lower() == "novograd":
                 optimizer = Novograd(

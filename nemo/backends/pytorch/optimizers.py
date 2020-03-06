@@ -43,10 +43,12 @@ class AdamW(Optimizer):
     """
 
     def __init__(
-        self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, amsgrad=False,
+        self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0, amsgrad=False, max_grad_norm=0.0
     ):
         _check_valid_opt_params(lr, eps, betas)
-        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad,)
+        defaults = dict(
+            lr=lr, betas=betas, eps=eps, weight_decay=weight_decay, amsgrad=amsgrad, max_grad_norm=max_grad_norm
+        )
         super(AdamW, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -76,7 +78,7 @@ class AdamW(Optimizer):
                 state = self.state[p]
 
                 # State initialization
-                if not state:
+                if len(state) == 0:
                     state["step"] = 0
                     # Exponential moving average of gradient values
                     state["exp_avg"] = torch.zeros_like(p.data)
@@ -92,6 +94,8 @@ class AdamW(Optimizer):
                 beta1, beta2 = group["betas"]
 
                 state["step"] += 1
+                if group['max_grad_norm'] > 0:
+                    torch.nn.utils.clip_grad_norm_(p, group['max_grad_norm'])
 
                 # if group['weight_decay'] != 0:
                 #     grad = grad.add(group['weight_decay'], p.data)

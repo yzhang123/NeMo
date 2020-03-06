@@ -147,6 +147,9 @@ parser.add_argument(
     help="Only needed for specific optimizers. Exponential decay rates for the 1st moment of optimizers, e.g. *adam*, *novograd*, *lamb*.",
 )
 parser.add_argument(
+    "--max_grad_norm", default=0, type=float, help="Maximum gradient norm for gradient clipping",
+)
+parser.add_argument(
     "--beta2",
     default=0.25,
     type=float,
@@ -449,6 +452,7 @@ optimization_params = {
     "lr": args.lr,
     "betas": (args.beta1, args.beta2),
     "weight_decay": args.weight_decay,
+    "max_grad_norm": args.max_grad_norm,
 }
 
 if args.num_iters < 0:
@@ -458,7 +462,7 @@ else:
 nf.train(
     tensors_to_optimize=[train_loss],
     lr_policy=lr_policy_fn,
-    callbacks=[train_callback, ckpt_callback, ckpt_eval],
+    callbacks=[train_callback, ckpt_callback],
     optimizer=args.optimizer,
     batches_per_step=args.batches_per_step,
     gradient_predivide=args.gradient_predivide,
