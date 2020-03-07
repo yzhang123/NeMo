@@ -305,7 +305,7 @@ class PtActions(Actions):
             elif optimizer_class.lower() == "fused_adam":
                 optimizer = FusedAdam(params=params_to_optimize, lr=lr)
             elif optimizer_class.lower() == "adam_w":
-                optimizer = AdamW(
+                optimizer = optim.AdamW(
                     params=params_to_optimize,
                     lr=lr,
                     weight_decay=optimization_params.get("weight_decay", 0.0),
