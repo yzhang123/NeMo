@@ -138,6 +138,9 @@ parser.add_argument(
     "--lr_warmup_proportion", default=0.05, type=float, help="Warm up proportion of total training iterations."
 )
 parser.add_argument(
+    "--grad_norm_clip", default=None, type=float, help=""
+)
+parser.add_argument(
     "--optimizer",
     default="novograd",
     type=str,
@@ -452,6 +455,7 @@ optimization_params = {
     "lr": args.lr,
     "betas": (args.beta1, args.beta2),
     "weight_decay": args.weight_decay,
+    "grad_norm_clip": args.grad_norm_clip,
 }
 
 if args.num_iters < 0:
@@ -461,7 +465,7 @@ else:
 nf.train(
     tensors_to_optimize=[train_loss],
     lr_policy=lr_policy_fn,
-    callbacks=[train_callback, ckpt_callback, ckpt_eval],
+    callbacks=[train_callback, ckpt_callback],
     optimizer=args.optimizer,
     batches_per_step=args.batches_per_step,
     gradient_predivide=args.gradient_predivide,
