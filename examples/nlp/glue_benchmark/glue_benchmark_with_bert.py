@@ -210,7 +210,6 @@ tokenizer = nemo.collections.nlp.data.tokenizers.get_tokenizer(
     tokenizer_model=args.tokenizer_model,
 )
 
-
 hidden_size = model.hidden_size
 
 # uses [CLS] token for classification (the first token)

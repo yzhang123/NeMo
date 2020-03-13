@@ -154,7 +154,7 @@ class MultiWOZDataLayer(TextDataLayer):
             lengths = [len(seq) for seq in sequences]
             max_len = 1 if max(lengths) == 0 else max(lengths)
             for i, seq in enumerate(sequences):
-                sequences[i] = seq + [1] * (max_len - len(seq))
+                sequences[i] = seq + [1] * (max_len - len(seq))  # 1 for padding
             return torch.tensor(sequences), torch.tensor(lengths)
 
         def pad_batch_response(sequences, pad_id):

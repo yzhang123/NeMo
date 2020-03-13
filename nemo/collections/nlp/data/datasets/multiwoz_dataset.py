@@ -64,8 +64,8 @@ class MultiWOZDataset(Dataset):
         self.all_domains = all_domains
         self.vocab = vocab
         self.slots = slots
-
-        self.features, self.max_len = self.get_features(num_samples, shuffle)
+        # max_len is maximum length of all dialogues
+        self.features, _ = self.get_features(num_samples, shuffle)
         logging.info("Sample 0: " + str(self.features[0]))
 
     def get_features(self, num_samples, shuffle):
@@ -107,6 +107,7 @@ class MultiWOZDataset(Dataset):
 
                 gating_label, responses = [], []
                 for slot in self.slots:
+
                     if slot in turn_beliefs:
                         responses.append(str(turn_beliefs[slot]))
                         if turn_beliefs[slot] == "dontcare":
@@ -130,7 +131,6 @@ class MultiWOZDataset(Dataset):
                     'turn_uttr': turn_uttr_strip,
                     'responses': responses,
                 }
-
                 sample['context_ids'] = self.vocab.tokens2ids(sample['dialogue_history'].split())
                 sample['responses_ids'] = [
                     self.vocab.tokens2ids(y.split() + [self.vocab.eos]) for y in sample['responses']
@@ -285,10 +285,10 @@ class MultiWOZDataDesc:
                 self.vocab.add_words(turn['system_transcript'], 'utterance')
                 self.vocab.add_words(turn['transcript'], 'utterance')
 
-                turn_beliefs = fix_general_label_error_multiwoz(turn['belief_state'], self.slots)
-                lengths = [len(turn_beliefs[slot]) for slot in self.slots if slot in turn_beliefs]
-                lengths.append(max_value_len)
-                max_value_len = max(lengths)
+                # turn_beliefs = fix_general_label_error_multiwoz(turn['belief_state'], self.slots)
+                # lengths = [len(turn_beliefs[slot]) for slot in self.slots if slot in turn_beliefs]
+                # lengths.append(max_value_len)
+                # max_value_len = max(lengths)
 
         logging.info(f'Saving vocab to {self.data_dir}')
         with open(self.vocab_file, 'wb') as handle:
@@ -296,6 +296,9 @@ class MultiWOZDataDesc:
 
 
 def fix_general_label_error_multiwoz(labels, slots):
+    """
+        fix values of slots
+    """
     label_dict = dict([label['slots'][0] for label in labels])
     GENERAL_TYPO = {
         # type

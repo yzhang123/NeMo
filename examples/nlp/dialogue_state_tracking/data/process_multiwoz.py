@@ -421,7 +421,13 @@ def divideData(data, infold, outfold):
                 turn_dialog['belief_state'] = [{"slots": [s], "act": "inform"} for s in turn['bvs']]
                 turn_dialog['turn_label'] = [bs["slots"][0] for bs in turn_dialog['belief_state'] if bs not in last_bs]
                 turn_dialog['transcript'] = turn['usr']
-                turn_dialog['system_acts'] = dial[turn_i - 1]['sys_a'] if turn_i > 0 else []
+                if turn_i > 0:
+                    turn_dialog['system_acts'] = dial[turn_i - 1]['sys_a']
+                    import ipdb
+
+                    ipdb.set_trace()
+                else:
+                    turn_dialog['system_acts'] = []
                 turn_dialog['domain'] = turn['domain']
                 last_bs = turn_dialog['belief_state']
                 dialogue['dialogue'].append(turn_dialog)
