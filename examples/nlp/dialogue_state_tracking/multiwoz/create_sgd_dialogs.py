@@ -142,11 +142,56 @@ def get_services_of_dialogue(dials: List[dict], dial_idx: int) -> List[str]:
         services.add(turn["domain"])
     return list(services)
 
-def get_diag_sys_turn(turn: dict, act: dict)->dict:
+def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: str, possible_slots: dict)->dict:
     if turn["system_transcript"] == "":
         return None
+    
+    out_turn = dict()
+    out_turn["speaker"] = "SYSTEM"
+    out_turn["utterance"] = turn["system_transcript"]
+    domain = prev_domain
+    frames = [{}]
+    service = f"{domain}_1"
+    actions = list()
+    turn_id = str(turn_id)
+    slots = []
+    if turn_id in diag_acts and diag_acts[turn_id] != "No Annotation":
+        sys_acts = diag_acts[turn_id]
+        for act, act_vals in sys_acts.items():
+            act_name = normalize(act.split("-")[1]).upper()
+            for slot_name, slot_val in act_vals:
+                
+                ##### TODO: fix and normlize slot_name with file
+                slot_name = normalize(slot_name)
+                slot_val = normalize(slot_val)
+                
+                out_act = dict()
+                out_act["act"] = act_name # filter ACTIONS if needed
+                out_slot_name = ""
+                out_slot_val = []
+                if slot_name != "none" and slot_name in possible_slots:
+                    out_slot_name = slot_name
+                    if slot_val in ["none", "?"] :
+                        out_slot_val = []
+                    else:
+                        out_slot_val = [slot_val]
+                        m = re.match(slot_val, turn["system_transcript"], re.IGNORECASE)
+                        if m is not None:
+                            slots.append({"slot": out_slot_name, "start": m.span()[0], "exclusive_end": m.span()[1]})
+                else:
+                    print(f"NOT FOUND {slot_name}:{slot_val}")
 
-    return {}
+                out_act["slot"] = out_slot_name
+                out_act["values"] = out_slot_val
+
+                # TODO add rule -based filter for actions and their values, e.g. inform cannot have empty out_slot_val
+                actions.append(out_act)
+
+    frames[0]["actions"] = actions
+    frames[0]["service"] = service
+    frames[0]["slots"] = slots
+    out_turn["frames"] = frames
+    return out_turn
 
 def clean_slot(slot: str)->str:
     slot = slot.split("-")[1]
@@ -192,14 +237,16 @@ def get_diag_user_turn(turn: dict)->dict:
     out_turn["frames"] = frames
     return out_turn
 
-def get_diag_turns(dials: List[dict], dial_idx: int, dialogue_acts: dict) -> List[dict]:
+def get_diag_turns(dials: List[dict], dial_idx: int, dialogue_acts: dict, domain_slots: dict) -> List[dict]:
     dialogue = dials[dial_idx]["dialogue"]
     out_turns = list()
 
     for in_turn_id, in_turn in enumerate(dialogue):
         sys_turn = None
         if in_turn_id > 0:
-            sys_turn = get_diag_sys_turn(in_turn, dialogue[in_turn_id])
+            prev_domain=dialogue[in_turn_id - 1]["domain"]
+            sys_turn = get_diag_sys_turn(in_turn, in_turn_id, dialogue_acts, prev_domain=prev_domain, possible_slots=domain_slots[prev_domain])
+
         if sys_turn is not None:
             out_turns.append(sys_turn)
         user_turn = get_diag_user_turn(in_turn)
@@ -227,7 +274,7 @@ def main(args):
         new_diag = dict()
         new_diag["dialogue_id"] = dial["dialogue_idx"].split(".json")[0]
         new_diag["services"] = get_services_of_dialogue(source_dials, dial_idx)
-        new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[new_diag["dialogue_id"]])
+        new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[new_diag["dialogue_id"]], domain_slots)
         target_dials.append(new_diag)
 
     with open(args.target_dials, 'w') as target_dials_fp:
