@@ -1,0 +1,5 @@
+price   pricerange
+depart  departure
+arrive  arriveby
+leave   leaveat
+dest    destination

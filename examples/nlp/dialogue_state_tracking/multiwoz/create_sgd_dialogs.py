@@ -148,7 +148,7 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
     
     out_turn = dict()
     out_turn["speaker"] = "SYSTEM"
-    out_turn["utterance"] = turn["system_transcript"]
+    out_turn["utterance"] = normalize(turn["system_transcript"])
     domain = prev_domain
     frames = [{}]
     service = f"{domain}_1"
@@ -161,9 +161,11 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
             act_name = normalize(act.split("-")[1]).upper()
             for slot_name, slot_val in act_vals:
                 
-                ##### TODO: fix and normlize slot_name with file
                 slot_name = normalize(slot_name)
                 slot_val = normalize(slot_val)
+                ##### TODO: fix and normlize slot_name with file
+                if slot_name in SLOTNAME_REPLACEMENTS:
+                    slot_name = SLOTNAME_REPLACEMENTS[slot_name]
                 
                 out_act = dict()
                 out_act["act"] = act_name # filter ACTIONS if needed
@@ -185,6 +187,16 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
                 out_act["values"] = out_slot_val
 
                 # TODO add rule -based filter for actions and their values, e.g. inform cannot have empty out_slot_val
+                if act_name == "REQUEST":
+                    if out_slot_val: # nothing enters
+                        continue
+                elif act_name in ["INFORM", "RECOMMEND"]:
+                    if not out_slot_val or not out_slot_name: 
+                        print(f"#### {act_name}: {out_slot_name} {out_slot_val}")
+                        continue
+
+                if out_slot_val and not out_slot_name: # no enter
+                    continue
                 actions.append(out_act)
 
     frames[0]["actions"] = actions
@@ -204,7 +216,7 @@ def get_diag_user_turn(turn: dict)->dict:
         return None
     out_turn = dict()
     out_turn["speaker"] = "USER"
-    out_turn["utterance"] = turn["transcript"]
+    out_turn["utterance"] = normalize(turn["transcript"])
     frames = list()
     dom = turn["domain"]
     
@@ -285,17 +297,24 @@ if __name__ == "__main__":
     # Parse the command-line arguments.
     parser = argparse.ArgumentParser(description='Create MultiWOZ Schemas')
     parser.add_argument("--source_ontology", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/ontology.json', type=str)
-    parser.add_argument("--source_schema", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/schemas.json', type=str)
+    parser.add_argument("--source_correct", default='mapping.pair', type=str)
+    parser.add_argument("--source_slotname_correct", default='slot_name_mapping.txt', type=str)
     parser.add_argument("--source_acts", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/dialogue_acts.json', type=str)
     parser.add_argument("--source_dials", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/train_dials.json', type=str)
-    parser.add_argument("--target_dials", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/train_dials_sgd.json', type=str)
+    parser.add_argument("--target_dials", default='train_dials_sgd.json', type=str)
     args = parser.parse_args()
 
-    fin = open('mapping.pair', 'r')
+    fin = open(args.source_correct, 'r')
     REPLACEMENTS = []
     for line in fin.readlines():
         tok_from, tok_to = line.replace('\n', '').split('\t')
         REPLACEMENTS.append((' ' + tok_from + ' ', ' ' + tok_to + ' '))
+
+    fin = open(args.source_slotname_correct, 'r')
+    SLOTNAME_REPLACEMENTS = {}
+    for line in fin.readlines():
+        tok_from, tok_to = line.replace('\n', '').split()
+        SLOTNAME_REPLACEMENTS[tok_from.strip()] = tok_to.strip()
 
     main(args)
 
