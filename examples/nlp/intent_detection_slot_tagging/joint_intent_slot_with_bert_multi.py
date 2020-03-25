@@ -36,6 +36,7 @@ from nemo.collections.nlp.callbacks.joint_intent_slot_callback import eval_epoch
 from nemo.collections.nlp.data.datasets.joint_intent_slot_dataset import JointIntentSlotDataDesc
 from nemo.collections.nlp.nm.data_layers import BertJointIntentSlotDataLayer
 from nemo.collections.nlp.nm.trainables import JointIntentSlotClassifier
+from nemo.collections.nlp.nm.losses import KLDivergenceLossNM
 from nemo.core import CheckpointCallback, SimpleLossLoggerCallback
 from nemo.utils.lr_policies import get_lr_policy
 
@@ -71,7 +72,7 @@ parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument("--fc_dropout", default=0.1, type=float)
 
 parser.add_argument("--intent_loss_weight", default=0.6, type=float)
-parser.add_argument("--supervised_loss_weight", default=0.6, type=float)
+parser.add_argument("--supervised_loss_weight", default=1.0, type=float)
 parser.add_argument("--class_balancing", default="regular", type=str, choices=["regular", "weighted_loss"])
 parser.add_argument("--do_lower_case", action='store_true')
 parser.add_argument(
@@ -132,6 +133,8 @@ if args.class_balancing == 'weighted_loss':
 else:
     intent_loss_fn = CrossEntropyLossNM(logits_ndim=2)
     slot_loss_fn = CrossEntropyLossNM(logits_ndim=3)
+unsupervised_intent_loss_fn = KLDivergenceLossNM(logits_ndim=2)
+unsupervised_slot_loss_fn = KLDivergenceLossNM(logits_ndim=3)
 
 loss_agg_intent_fn = LossAggregatorNM(num_inputs=2, weights=[args.intent_loss_weight, 1.0 - args.intent_loss_weight])
 loss_agg_semi_fn = LossAggregatorNM(num_inputs=2, weights=[args.supervised_loss_weight, 1.0 - args.supervised_loss_weight])
@@ -246,18 +249,18 @@ def create_pipeline(num_samples=-1, batch_size=32, data_prefix='train', is_train
     
     supervised_loss = loss_agg_intent_fn(loss_1=intent_loss_0, loss_2=slot_loss_0)
     total_loss = supervised_loss
-    # if is_training:
-    #     hidden_states_1 = pretrained_bert_model(
-    #         input_ids=input_ids_1, token_type_ids=input_type_ids_1, attention_mask=input_mask_1
-    #     )
-    #     intent_logits_1, slot_logits_1 = classifier(hidden_states=hidden_states_1)
+    if is_training:
+        hidden_states_1 = pretrained_bert_model(
+            input_ids=input_ids_1, token_type_ids=input_type_ids_1, attention_mask=input_mask_1
+        )
+        intent_logits_1, slot_logits_1 = classifier(hidden_states=hidden_states_1)
 
-    #     intent_loss_1 = intent_loss_fn(logits=intent_logits_1, labels=intent_logits_1)
-    #     slot_loss_1 = slot_loss_fn(logits=slot_logits_1, labels=slots_1, loss_mask=loss_mask_1)
-    #     unsupervised_loss = loss_agg_intent_fn(loss_1=intent_loss_1, loss_2=slot_loss_1)
-    #     total_loss = loss_agg_semi_fn(loss1=supervised_loss, loss2=unsupervised_loss)
-    # else:
-    #     total_loss = supervised_loss
+        intent_loss_1 = unsupervised_intent_loss_fn(logits=intent_logits_1, labels=intent_logits_1)
+        slot_loss_1 = unsupervised_slot_loss_fn(logits=slot_logits_1, labels=slot_logits_1, loss_mask=loss_mask_1)
+        unsupervised_loss = loss_agg_intent_fn(loss_1=intent_loss_1, loss_2=slot_loss_1)
+        total_loss = loss_agg_semi_fn(loss_1=supervised_loss, loss_2=unsupervised_loss)
+    else:
+        total_loss = supervised_loss
 
     if is_training:
         tensors_to_evaluate = [total_loss, intent_logits_0, slot_logits_0]
