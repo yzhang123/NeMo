@@ -183,11 +183,12 @@ def normalize(text):
 
     return text
 
-def get_services_of_dialogue(dials: List[dict], dial_idx: int) -> List[str]:
+def get_services_of_dialogue(dials: List[dict], dial_idx: int, used_domains: List[str]) -> List[str]:
     dialogue = dials[dial_idx]["dialogue"]
     services = set()
     for turn in dialogue:
-        services.add(turn["domain"])
+        if turn["domain"] in used_domains:
+            services.add(f"{turn['domain']}_1")
     return list(services)
 
 def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: str, possible_slots: dict)->dict:
@@ -196,7 +197,8 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
     
     out_turn = dict()
     out_turn["speaker"] = "SYSTEM"
-    out_turn["utterance"] = normalize(turn["system_transcript"])
+    turn["system_transcript"] = normalize(turn["system_transcript"])
+    out_turn["utterance"] = turn["system_transcript"]
     domain = prev_domain
     frames = [{}]
     service = f"{domain}_1"
@@ -224,6 +226,7 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
                     if slot_val in ["none", "?"] :
                         out_slot_val = []
                     else:
+                        slot_val = slot_val.strip("?").strip()
                         out_slot_val = [slot_val]
                         
                         is_categorical = None
@@ -236,9 +239,18 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
                             continue
                         m = re.search(slot_val, turn["system_transcript"], re.IGNORECASE)
                         if m is not None:
-                            slots.append({"slot": out_slot_name, "start": m.span()[0], "exclusive_end": m.span()[1]})
+                            if not  turn["system_transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
+                                print(turn["system_transcript"][m.span()[0]:m.span()[1]] , ",", slot_val)
+                                continue
+                                    
+                            if len(turn["system_transcript"]) > m.span()[1] and turn["system_transcript"][m.span()[1]].isalnum():
+                                print("ALPHANUM", turn["system_transcript"], slot_val)
+                            
+                                continue
+                            slots.append({"slot": out_slot_name.strip(), "start": m.span()[0], "exclusive_end": m.span()[1]})
                 else:
-                    print(f"NOT FOUND {slot_name}:{slot_val}")
+                    # print(f"NOT FOUND {slot_name}:{slot_val}")
+                    pass
 
                 out_act["slot"] = out_slot_name
                 out_act["values"] = out_slot_val
@@ -249,7 +261,7 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
                         continue
                 elif act_name in ["INFORM", "RECOMMEND"]:
                     if not out_slot_val or not out_slot_name: 
-                        print(f"#### {act_name}: {out_slot_name} {out_slot_val}")
+                        # print(f"#### {act_name}: {out_slot_name} {out_slot_val}")
                         continue
 
                 if out_slot_val and not out_slot_name: # no enter
@@ -273,7 +285,8 @@ def get_diag_user_turn(turn: dict)->dict:
         return None
     out_turn = dict()
     out_turn["speaker"] = "USER"
-    out_turn["utterance"] = normalize(turn["transcript"])
+    turn["transcript"] = normalize(turn["transcript"])
+    out_turn["utterance"] = turn["transcript"] 
     frames = list()
     dom = turn["domain"]
     
@@ -294,9 +307,18 @@ def get_diag_user_turn(turn: dict)->dict:
         if is_categorical:
             continue
         slot_val = new_slot[1]
-        m = re.search(slot_val, turn["transcript"], re.IGNORECASE)
+        m = re.search(slot_val.strip(), turn["transcript"], re.IGNORECASE)
         if m is None:
-            print("---------------")
+            continue
+        
+        if not turn["transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
+            print(turn["transcript"][m.span()[0]:m.span()[1]], ",", slot_val)
+            if "?" in slot_val:
+                import ipdb; ipdb.set_trace()
+            continue
+        
+        if len(turn["transcript"]) > m.span()[1] and turn["transcript"][m.span()[1]].isalnum():
+            print("ALPHANUM", turn["transcript"], slot_val)
             continue
         out_slot["start"] = m.span()[0]
         out_slot["exclusive_end"] = m.span()[1]
@@ -310,7 +332,8 @@ def get_diag_user_turn(turn: dict)->dict:
     frame["state"]["slot_values"] = dict()
     for s, v in all_slots:
         s = clean_slot(s)
-        frame["state"]["slot_values"][s] = [v]
+        if v != "none":
+            frame["state"]["slot_values"][s] = [GENERAL_TYPOS.get(v, v)]
     frames.append(frame)
     out_turn["frames"] = frames
     return out_turn
@@ -321,13 +344,17 @@ def get_diag_turns(dials: List[dict], dial_idx: int, dialogue_acts: dict, domain
 
     for in_turn_id, in_turn in enumerate(dialogue):
         sys_turn = None
+        user_turn = None
         if in_turn_id > 0:
             prev_domain=dialogue[in_turn_id - 1]["domain"]
-            sys_turn = get_diag_sys_turn(in_turn, in_turn_id, dialogue_acts, prev_domain=prev_domain, possible_slots=domain_slots[prev_domain])
+            if prev_domain in domain_slots.keys():
+                sys_turn = get_diag_sys_turn(in_turn, in_turn_id, dialogue_acts, prev_domain=prev_domain, possible_slots=domain_slots[prev_domain])
 
         if sys_turn is not None:
             out_turns.append(sys_turn)
-        user_turn = get_diag_user_turn(in_turn)
+        
+        if in_turn["domain"] in domain_slots.keys():
+            user_turn = get_diag_user_turn(in_turn)
         if user_turn is not None:
             out_turns.append(user_turn)
     return out_turns
@@ -343,6 +370,7 @@ def main(args):
     domains = get_domains(ontology)
     domain_slots = get_domain_slots(ontology)
     acts = json.load(open(args.source_acts, 'r'))
+    print("acts", acts)
     domain_actions = get_domain_actions(domains, acts)
     source_dials = json.load(open(f"{args.source_dials}/{args.mode}_dials.json", 'r'))
 
@@ -351,7 +379,9 @@ def main(args):
     for dial_idx, dial in enumerate(source_dials):
         new_diag = dict()
         new_diag["dialogue_id"] = dial["dialogue_idx"].split(".json")[0]
-        new_diag["services"] = get_services_of_dialogue(source_dials, dial_idx)
+        new_diag["services"] = get_services_of_dialogue(source_dials, dial_idx, domains)
+        if not new_diag["services"]:
+            continue
         new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[new_diag["dialogue_id"]], domain_slots)
         target_dials.append(new_diag)
 
