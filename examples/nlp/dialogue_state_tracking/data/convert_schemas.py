@@ -70,9 +70,25 @@ def get_domains(ontology: dict) -> List[str]:
     for k in ontology:
         domain = k.split("-")[0].lower()
         if domain not in domains:
-            domains.append(domain)
+            domains.append(normalize(domain))
     assert len(domains) == 7
     return domains
+
+
+
+hotel_ranges = [
+    "nigh",
+    "moderate -ly priced",
+    "bed and breakfast",
+    "centre",
+    "venetian",
+    "intern",
+    "a cheap -er hotel",
+]
+locations = ["gastropub", "la raza", "galleria", "gallery", "science", "m"]
+detailed_hotels = ["hotel with free parking and free wifi", "4", "3 star hotel"]
+areas = ["stansted airport", "cambridge", "silver street"]
+attr_areas = ["norwich", "ely", "museum", "same area as hotel"]
 
 def get_domain_slots(ontology: dict) -> dict:
     domain_to_slots = defaultdict(dict)
@@ -80,11 +96,57 @@ def get_domain_slots(ontology: dict) -> dict:
         domain, slot = k.split("-")
         slot = normalize(slot)
         slot = slot.split()
-        if slot[0] == "book":
-            slot = slot[1:]
+        # if slot[0] == "book":
+        #     slot = slot[1:]
         slot = "".join(slot)
-        domain_to_slots[domain][slot] = v
-        # fix arriveby -> arriveBy etc
+        if slot == "":
+            continue
+        domain_slot_values = []
+        for x in v:
+            x =  normalize(x.strip().lower())
+            x = GENERAL_TYPOS.get(x, x)
+            # miss match slot and value
+            if (
+                (domain == "hotel" and slot == "type" and x in hotel_ranges)
+                or (domain == "hotel" and slot == "internet" and x == "4")
+                or (domain == "hotel" and slot == "pricerange" and x == "2")
+                or (domain == "attraction" and slot == "type" and x in locations)
+                or ("area" in slot and x in ["moderate"])
+                or ("day" in slot and x == "t")
+            ):
+                continue  # x=none
+            elif domain == "hotel" and slot == "type" and x in detailed_hotels:
+                x = "hotel"
+            elif domain == "hotel" and slot == "star" and x == "3 star hotel":
+                x = "3"
+            elif "area" in slot:
+                if x == "no":
+                    x = "north"
+                elif x == "we":
+                    x = "west"
+                elif x == "cent":
+                    x = "centre"
+            elif "day" in slot:
+                if x == "we":
+                    x = "wednesday"
+                elif x == "no":
+                    x = "none"
+            elif "price" in slot and x == "ch":
+                x = "cheap"
+            elif "internet" in slot and x == "free":
+                x = "yes"
+
+            # some out-of-define classification slot values
+            if (domain == "restaurant" and slot == "area" and x in areas) or (
+                domain == "attraction" and slot == "area" and x in attr_areas
+            ):
+                continue
+
+            domain_slot_values.append(x)
+        if domain_slot_values:
+            domain_to_slots[domain][slot] = domain_slot_values
+
+        
     return domain_to_slots
 
 
@@ -96,8 +158,8 @@ def get_schema_slots(domain: str, domain_slots: dict) -> List[dict]:
         slot_entry = dict()
         slot_entry["name"] = slot
         slot_entry["description"] = f"{domain} {slot}"
-        slot_entry["is_categorical"] = False # CHANGE?
-        slot_entry["possible_values"] = values
+        slot_entry["is_categorical"] = len(values)< 50 #slot in CATEGORICAL_SLOTS
+        slot_entry["possible_values"] = values if slot_entry["is_categorical"] else []
         res.append(slot_entry)
 
     return res
@@ -122,7 +184,7 @@ def get_schema_intents(domain: str, domain_slots: dict) -> List[dict]:
 def main(args):
 
     ontology = json.load(open(args.source_ontology, 'r'))
-    acts = json.load(open(args.source_acts, 'r'))
+    # acts = json.load(open(args.source_acts, 'r'))
     domains = get_domains(ontology)
     domain_slots = get_domain_slots(ontology)
 
@@ -144,16 +206,22 @@ def main(args):
 if __name__ == "__main__":
     # Parse the command-line arguments.
     parser = argparse.ArgumentParser(description='Create MultiWOZ Schemas')
+    parser.add_argument("--source_multiwoz_mapping", default='multiwoz_mapping.pair', type=str)
+    parser.add_argument("--source_general_typos", default='general_typo.json', type=str)
+    parser.add_argument("--source_categorical_slots", default='categorical_slots.json', type=str)
     parser.add_argument("--source_ontology", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/ontology.json', type=str)
-    parser.add_argument("--source_acts", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/dialogue_acts.json', type=str)
+    # parser.add_argument("--source_acts", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/dialogue_acts.json', type=str)
     parser.add_argument("--target_schema", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/schemas.json', type=str)
     args = parser.parse_args()
 
-    fin = open('mapping.pair', 'r')
+    fin = open(args.source_multiwoz_mapping, 'r')
     REPLACEMENTS = []
     for line in fin.readlines():
         tok_from, tok_to = line.replace('\n', '').split('\t')
         REPLACEMENTS.append((' ' + tok_from + ' ', ' ' + tok_to + ' '))
+    
+    CATEGORICAL_SLOTS = json.load(open(args.source_categorical_slots, 'r'))["categorical_slots"]
+    GENERAL_TYPOS = json.load(open(args.source_general_typos, 'r'))
 
     main(args)
 

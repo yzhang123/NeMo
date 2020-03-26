@@ -19,37 +19,85 @@ def get_domains(ontology: dict) -> List[str]:
     assert len(domains) == 7
     return domains
 
+"""
+returns dict (domain, slot) -> value
+"""
+
+hotel_ranges = [
+    "nigh",
+    "moderate -ly priced",
+    "bed and breakfast",
+    "centre",
+    "venetian",
+    "intern",
+    "a cheap -er hotel",
+]
+locations = ["gastropub", "la raza", "galleria", "gallery", "science", "m"]
+detailed_hotels = ["hotel with free parking and free wifi", "4", "3 star hotel"]
+areas = ["stansted airport", "cambridge", "silver street"]
+attr_areas = ["norwich", "ely", "museum", "same area as hotel"]
+
 def get_domain_slots(ontology: dict) -> dict:
     domain_to_slots = defaultdict(dict)
     for k, v in ontology.items():
         domain, slot = k.split("-")
         slot = normalize(slot)
         slot = slot.split()
-        if slot[0] == "book":
-            slot = slot[1:]
+        # if slot[0] == "book":
+        #     slot = slot[1:]
         slot = "".join(slot)
-        domain_to_slots[domain][slot] = v
-        # fix arriveby -> arriveBy etc
+        if slot == "":
+            continue
+        domain_slot_values = []
+        for x in v:
+            x =  normalize(x.strip().lower())
+            x = GENERAL_TYPOS.get(x, x)
+            # miss match slot and value
+            if (
+                (domain == "hotel" and slot == "type" and x in hotel_ranges)
+                or (domain == "hotel" and slot == "internet" and x == "4")
+                or (domain == "hotel" and slot == "pricerange" and x == "2")
+                or (domain == "attraction" and slot == "type" and x in locations)
+                or ("area" in slot and x in ["moderate"])
+                or ("day" in slot and x == "t")
+            ):
+                continue  # x=none
+            elif domain == "hotel" and slot == "type" and x in detailed_hotels:
+                x = "hotel"
+            elif domain == "hotel" and slot == "star" and x == "3 star hotel":
+                x = "3"
+            elif "area" in slot:
+                if x == "no":
+                    x = "north"
+                elif x == "we":
+                    x = "west"
+                elif x == "cent":
+                    x = "centre"
+            elif "day" in slot:
+                if x == "we":
+                    x = "wednesday"
+                elif x == "no":
+                    x = "none"
+            elif "price" in slot and x == "ch":
+                x = "cheap"
+            elif "internet" in slot and x == "free":
+                x = "yes"
+
+            # some out-of-define classification slot values
+            if (domain == "restaurant" and slot == "area" and x in areas) or (
+                domain == "attraction" and slot == "area" and x in attr_areas
+            ):
+                continue
+            
+            domain_slot_values.append(x)
+        if domain_slot_values:
+            domain_to_slots[domain][slot] = domain_slot_values
+
     return domain_to_slots
 
 
-
-def get_schema_slots(domain: str, domain_slots: dict) -> List[dict]:
-    slots = domain_slots[domain] # dict: slot -> list of values
-    res = list()
-    for slot, values in slots.items():
-        slot_entry = dict()
-        slot_entry["name"] = slot
-        slot_entry["description"] = f"{domain} {slot}"
-        slot_entry["is_categorical"] = False # CHANGE?
-        slot_entry["possible_values"] = values
-        res.append(slot_entry)
-
-    return res
-
-
 def get_schema_intents(domain: str, domain_slots: dict) -> List[dict]:
-    intents = ["request", "inform"]
+    intents = ["inform"]
     slots = domain_slots[domain].keys() # dict: slot -> list of values
     res = list()
     for intent in intents:
@@ -177,7 +225,16 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
                         out_slot_val = []
                     else:
                         out_slot_val = [slot_val]
-                        m = re.match(slot_val, turn["system_transcript"], re.IGNORECASE)
+                        
+                        is_categorical = None
+                        for schema in SCHEMAS:
+                            if schema["service_name"] == service:
+                                for item in schema["slots"]:
+                                    if item["name"] == out_slot_name:
+                                        is_categorical = item["is_categorical"]
+                        if is_categorical:
+                            continue
+                        m = re.search(slot_val, turn["system_transcript"], re.IGNORECASE)
                         if m is not None:
                             slots.append({"slot": out_slot_name, "start": m.span()[0], "exclusive_end": m.span()[1]})
                 else:
@@ -208,7 +265,7 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
 def clean_slot(slot: str)->str:
     slot = slot.split("-")[1]
     if "book" in slot:
-        slot = slot.split()[1]
+        slot = "".join(slot.split())
     return slot.strip()
 
 def get_diag_user_turn(turn: dict)->dict:
@@ -228,9 +285,18 @@ def get_diag_user_turn(turn: dict)->dict:
     for new_slot in new_slots:
         out_slot = dict()
         out_slot["slot"] = clean_slot(new_slot[0])
+        is_categorical = None
+        for schema in SCHEMAS:
+            if schema["service_name"] == frame["service"]:
+                for item in schema["slots"]:
+                    if item["name"] == out_slot["slot"]:
+                        is_categorical = item["is_categorical"]
+        if is_categorical:
+            continue
         slot_val = new_slot[1]
-        m = re.match(slot_val, turn["transcript"], re.IGNORECASE)
+        m = re.search(slot_val, turn["transcript"], re.IGNORECASE)
         if m is None:
+            print("---------------")
             continue
         out_slot["start"] = m.span()[0]
         out_slot["exclusive_end"] = m.span()[1]
@@ -278,7 +344,7 @@ def main(args):
     domain_slots = get_domain_slots(ontology)
     acts = json.load(open(args.source_acts, 'r'))
     domain_actions = get_domain_actions(domains, acts)
-    source_dials = json.load(open(args.source_dials, 'r'))
+    source_dials = json.load(open(f"{args.source_dials}/{args.mode}_dials.json", 'r'))
 
 
     target_dials = list()
@@ -289,7 +355,7 @@ def main(args):
         new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[new_diag["dialogue_id"]], domain_slots)
         target_dials.append(new_diag)
 
-    with open(args.target_dials, 'w') as target_dials_fp:
+    with open(f"{args.mode}_{args.target_dials}", 'w') as target_dials_fp:
         json.dump(target_dials, target_dials_fp, indent=4)
 
 
@@ -297,24 +363,34 @@ if __name__ == "__main__":
     # Parse the command-line arguments.
     parser = argparse.ArgumentParser(description='Create MultiWOZ Schemas')
     parser.add_argument("--source_ontology", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/ontology.json', type=str)
-    parser.add_argument("--source_correct", default='mapping.pair', type=str)
+    parser.add_argument("--source_multiwoz_mapping", default='multiwoz_mapping.pair', type=str)
+    parser.add_argument("--source_general_typos", default='general_typo.json', type=str)
     parser.add_argument("--source_slotname_correct", default='slot_name_mapping.txt', type=str)
+    parser.add_argument("--source_schemas", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/schemas.json', type=str)
     parser.add_argument("--source_acts", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/dialogue_acts.json', type=str)
-    parser.add_argument("--source_dials", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/train_dials.json', type=str)
-    parser.add_argument("--target_dials", default='train_dials_sgd.json', type=str)
+    parser.add_argument("--source_dials", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/', type=str)
+    parser.add_argument("--target_dials", default='dials_sgd.json', type=str)
+    parser.add_argument("--mode", default='train', type=str)
     args = parser.parse_args()
 
-    fin = open(args.source_correct, 'r')
+    fin = open(args.source_multiwoz_mapping, 'r')
     REPLACEMENTS = []
     for line in fin.readlines():
         tok_from, tok_to = line.replace('\n', '').split('\t')
         REPLACEMENTS.append((' ' + tok_from + ' ', ' ' + tok_to + ' '))
+
+    GENERAL_TYPOS = json.load(open(args.source_general_typos, 'r'))
 
     fin = open(args.source_slotname_correct, 'r')
     SLOTNAME_REPLACEMENTS = {}
     for line in fin.readlines():
         tok_from, tok_to = line.replace('\n', '').split()
         SLOTNAME_REPLACEMENTS[tok_from.strip()] = tok_to.strip()
+
+
+
+    
+    SCHEMAS = json.load(open(args.source_schemas, 'r'))
 
     main(args)
 
