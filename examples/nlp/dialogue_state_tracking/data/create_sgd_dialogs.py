@@ -205,68 +205,77 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
     actions = list()
     turn_id = str(turn_id)
     slots = []
-    if turn_id in diag_acts and diag_acts[turn_id] != "No Annotation":
-        sys_acts = diag_acts[turn_id]
-        for act, act_vals in sys_acts.items():
-            act_name = normalize(act.split("-")[1]).upper()
-            for slot_name, slot_val in act_vals:
-                
-                slot_name = normalize(slot_name)
-                slot_val = normalize(slot_val)
-                ##### TODO: fix and normlize slot_name with file
-                if slot_name in SLOTNAME_REPLACEMENTS:
-                    slot_name = SLOTNAME_REPLACEMENTS[slot_name]
-                
-                out_act = dict()
-                out_act["act"] = act_name # filter ACTIONS if needed
-                out_slot_name = ""
+    sys_acts = turn["system_acts"]
+    for act_item in sys_acts:
+        if isinstance(act_item, str):
+            act_name = "REQUEST"
+            slot_name = normalize(act_item)
+            slot_val = []
+        else:
+            assert(isinstance(act_item, list))
+            act_name = "INFORM"
+            slot_name = normalize(act_item[0])
+            slot_val = normalize(act_item[1])
+        
+            
+        slot_name = SLOTNAME_REPLACEMENTS.get(slot_name, slot_name)
+        
+        out_act = dict()
+        out_act["act"] = act_name # filter ACTIONS if needed
+        out_slot_name = ""
+        out_slot_val = []
+        if slot_name != "none" and slot_name in possible_slots:
+            out_slot_name = slot_name
+            if not slot_val or slot_val in ["none", "?"] :
                 out_slot_val = []
-                if slot_name != "none" and slot_name in possible_slots:
-                    out_slot_name = slot_name
-                    if slot_val in ["none", "?"] :
-                        out_slot_val = []
-                    else:
-                        slot_val = slot_val.strip("?").strip()
-                        out_slot_val = [slot_val]
-                        
-                        is_categorical = None
-                        for schema in SCHEMAS:
-                            if schema["service_name"] == service:
-                                for item in schema["slots"]:
-                                    if item["name"] == out_slot_name:
-                                        is_categorical = item["is_categorical"]
-                        if is_categorical:
-                            continue
-                        m = re.search(slot_val, turn["system_transcript"], re.IGNORECASE)
-                        if m is not None:
-                            if not  turn["system_transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
-                                print(turn["system_transcript"][m.span()[0]:m.span()[1]] , ",", slot_val)
-                                continue
-                                    
-                            if len(turn["system_transcript"]) > m.span()[1] and turn["system_transcript"][m.span()[1]].isalnum():
-                                print("ALPHANUM", turn["system_transcript"], slot_val)
-                            
-                                continue
-                            slots.append({"slot": out_slot_name.strip(), "start": m.span()[0], "exclusive_end": m.span()[1]})
-                else:
-                    # print(f"NOT FOUND {slot_name}:{slot_val}")
-                    pass
-
-                out_act["slot"] = out_slot_name
-                out_act["values"] = out_slot_val
-
-                # TODO add rule -based filter for actions and their values, e.g. inform cannot have empty out_slot_val
-                if act_name == "REQUEST":
-                    if out_slot_val: # nothing enters
-                        continue
-                elif act_name in ["INFORM", "RECOMMEND"]:
-                    if not out_slot_val or not out_slot_name: 
-                        # print(f"#### {act_name}: {out_slot_name} {out_slot_val}")
-                        continue
-
-                if out_slot_val and not out_slot_name: # no enter
+            else:
+                out_slot_val = [slot_val]
+                
+                is_categorical = None
+                for schema in SCHEMAS:
+                    if schema["service_name"] == service:
+                        for item in schema["slots"]:
+                            if item["name"] == out_slot_name:
+                                is_categorical = item["is_categorical"]
+                if is_categorical:
                     continue
-                actions.append(out_act)
+                try:
+                    m = re.search(slot_val, turn["system_transcript"], re.IGNORECASE)
+                except:
+                    import ipdb; ipdb.set_trace()
+                if m is not None:
+                    if not  turn["system_transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
+                        print(turn["system_transcript"][m.span()[0]:m.span()[1]] , ",", slot_val)
+                        continue
+                            
+                    if len(turn["system_transcript"]) > m.span()[1] and turn["system_transcript"][m.span()[1]].isalnum():
+                        print("ALPHANUM", turn["system_transcript"], slot_val)
+                    
+                        continue
+                    if m.span()[0]>0 and turn["system_transcript"][m.span()[0]-1].isalnum():
+                        print("ALPHANUM", turn["system_transcript"], slot_val)
+                    
+                        continue
+                    slots.append({"slot": out_slot_name.strip(), "start": m.span()[0], "exclusive_end": m.span()[1]})
+        else:
+            # print(f"NOT FOUND {slot_name}:{slot_val}")
+            continue
+
+        out_act["slot"] = out_slot_name
+        out_act["values"] = out_slot_val
+
+        # TODO add rule -based filter for actions and their values, e.g. inform cannot have empty out_slot_val
+        if act_name == "REQUEST":
+            if out_slot_val: # nothing enters
+                continue
+        elif act_name in ["INFORM", "RECOMMEND"]:
+            if not out_slot_val or not out_slot_name: 
+                # print(f"#### {act_name}: {out_slot_name} {out_slot_val}")
+                continue
+
+        if out_slot_val and not out_slot_name: # no enter
+            continue
+        actions.append(out_act)
 
     frames[0]["actions"] = actions
     frames[0]["service"] = service
@@ -320,6 +329,11 @@ def get_diag_user_turn(turn: dict)->dict:
         if len(turn["transcript"]) > m.span()[1] and turn["transcript"][m.span()[1]].isalnum():
             print("ALPHANUM", turn["transcript"], slot_val)
             continue
+        
+        if m.span()[0]>0 and turn["transcript"][m.span()[0]-1].isalnum():
+            print("ALPHANUM", turn["transcript"], slot_val)
+        
+            continue
         out_slot["start"] = m.span()[0]
         out_slot["exclusive_end"] = m.span()[1]
         frame["slots"].append(out_slot)
@@ -370,7 +384,6 @@ def main(args):
     domains = get_domains(ontology)
     domain_slots = get_domain_slots(ontology)
     acts = json.load(open(args.source_acts, 'r'))
-    print("acts", acts)
     domain_actions = get_domain_actions(domains, acts)
     source_dials = json.load(open(f"{args.source_dials}/{args.mode}_dials.json", 'r'))
 
