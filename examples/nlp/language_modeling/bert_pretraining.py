@@ -347,6 +347,7 @@ def create_pipeline(data_file, batch_size, preprocessed_data=False, batches_per_
         )
 
     steps_per_epoch = math.ceil(len(data_layer) / (batch_size * args.num_gpus * batches_per_step))
+    logging.info(f"steps_per_epoch {steps_per_epoch}")
 
     input_data = data_layer()
     hidden_states = bert_model(
@@ -466,7 +467,7 @@ else:
 nf.train(
     tensors_to_optimize=[train_loss],
     lr_policy=lr_policy_fn,
-    callbacks=[train_callback, ckpt_callback],
+    callbacks=[train_callback, ckpt_callback, ckpt_eval],
     optimizer=args.optimizer,
     batches_per_step=args.batches_per_step,
     gradient_predivide=args.gradient_predivide,
