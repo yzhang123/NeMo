@@ -191,6 +191,13 @@ parser.add_argument(
 parser.add_argument(
     "--work_dir", default="outputs/bert_lm", type=str, help="Output directory for checkpoints, logs etc."
 )
+parser.add_argument(
+    '--pretrained_model_name',
+    default='roberta-base',
+    type=str,
+    help='Name of the pre-trained model',
+    choices=nemo_nlp.nm.trainables.get_bert_models_list(),
+)
 parser.add_argument("--save_epoch_freq", default=1, type=int, help="Save checkpoints every given epoch.")
 parser.add_argument("--save_step_freq", default=100, type=int, help="Save checkpoints every given iteration.")
 parser.add_argument("--train_step_freq", default=25, type=int, help="Print training metrics every given iteration.")
@@ -281,14 +288,8 @@ if 'data_text' in sys.argv:
     args.vocab_size = tokenizer.vocab_size
 
 
-bert_model = nemo_nlp.nm.trainables.huggingface.BERT(
-    vocab_size=args.vocab_size,
-    num_hidden_layers=args.num_hidden_layers,
-    hidden_size=args.hidden_size,
-    num_attention_heads=args.num_attention_heads,
-    intermediate_size=args.intermediate_size,
-    max_position_embeddings=args.max_seq_length,
-    hidden_act=args.hidden_act,
+bert_model = nemo_nlp.nm.trainables.get_huggingface_model(
+    bert_config=None, pretrained_model_name=args.pretrained_model_name
 )
 
 if args.bert_checkpoint is not None:
