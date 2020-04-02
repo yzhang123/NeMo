@@ -24,6 +24,7 @@ https://github.com/huggingface/pytorch-pretrained-BERT
 
 import numpy as np
 from torch.utils.data import Dataset
+from collections import defaultdict
 
 from nemo import logging
 from nemo.collections.nlp.data.datasets.datasets_utils import get_stats
@@ -31,104 +32,103 @@ from nemo.collections.nlp.data.datasets.datasets_utils import get_stats
 __all__ = ['BertJointIntentSlotDataset', 'BertJointIntentSlotInferDataset']
 
 
-def get_features(
+
+def get_slot_value_mapping(
     queries,
-    max_seq_length,
-    tokenizer,
-    pad_label=128,
+    pad_label,
     raw_slots=None,
-    ignore_extra_tokens=False,
-    ignore_start_end=False,
 ):
-    all_subtokens = []
-    all_loss_mask = []
-    all_subtokens_mask = []
-    all_segment_ids = []
-    all_input_ids = []
-    all_input_mask = []
-    sent_lengths = []
-    all_slots = []
-
-    with_label = False
-    if raw_slots is not None:
-        with_label = True
-
+    slot_values = defaultdict(set)
     for i, query in enumerate(queries):
         words = query.strip().split()
-        subtokens = [tokenizer.cls_token]
-        loss_mask = [1 - ignore_start_end]
-        subtokens_mask = [0]
-        if with_label:
-            slots = [pad_label]
-
         for j, word in enumerate(words):
-            word_tokens = tokenizer.text_to_tokens(word)
-            subtokens.extend(word_tokens)
+            if raw_slots[i][j] != pad_label:
+                slot_values[raw_slots[i][j]].add(word)
+    return slot_values
 
-            loss_mask.append(1)
-            loss_mask.extend([not ignore_extra_tokens] * (len(word_tokens) - 1))
+def augmentation(
+    query,
+    raw_slot,
+    slot_to_value_mapping,
+    prob_to_change = 0.2
+):
+    words = query.strip().split()
+    for j, word in enumerate(words):
+        alternative_values = slot_to_value_mapping.get(raw_slot[j], None)
+        if alternative_values:
+            if random.rand() < prob_to_change:
+                words[j] = random.choice(alternative_values)
 
-            subtokens_mask.append(1)
-            subtokens_mask.extend([0] * (len(word_tokens) - 1))
+    return words
 
-            if with_label:
-                slots.extend([raw_slots[i][j]] * len(word_tokens))
 
-        subtokens.append(tokenizer.sep_token)
-        loss_mask.append(1 - ignore_start_end)
-        subtokens_mask.append(0)
-        sent_lengths.append(len(subtokens))
-        all_subtokens.append(subtokens)
-        all_loss_mask.append(loss_mask)
-        all_subtokens_mask.append(subtokens_mask)
-        all_input_mask.append([1] * len(subtokens))
+def get_features(
+    query,
+    max_seq_length,
+    tokenizer,
+    slot_to_value_mapping,
+    pad_label=128,
+    raw_slot=None,
+    ignore_extra_tokens=False,
+    ignore_start_end=False,
+    with_label=False,
+    augmentation_func=None,
+):
+
+    if augmentation_func:
+        words = augmentation_func(query, raw_slot, slot_to_value_mapping, prob_to_change=0.2)
+    else:
+        words = query.strip().split()
+    subtokens = [tokenizer.cls_token]
+    loss_mask = [1 - ignore_start_end]
+    subtokens_mask = [0]
+    if with_label:
+        slots = [pad_label]
+
+    for j, word in enumerate(words):
+        word_tokens = tokenizer.text_to_tokens(word)
+        subtokens.extend(word_tokens)
+
+        loss_mask.append(1)
+        loss_mask.extend([not ignore_extra_tokens] * (len(word_tokens) - 1))
+
+        subtokens_mask.append(1)
+        subtokens_mask.extend([0] * (len(word_tokens) - 1))
+
         if with_label:
-            slots.append(pad_label)
-            all_slots.append(slots)
+            slots.extend([raw_slot[j]] * len(word_tokens))
 
-    max_seq_length = min(max_seq_length, max(sent_lengths))
-    logging.info(f'Max length: {max_seq_length}')
-    get_stats(sent_lengths)
-    too_long_count = 0
+    subtokens.append(tokenizer.sep_token)
+    loss_mask.append(1 - ignore_start_end)
+    subtokens_mask.append(0)
+    input_mask = [1] * len(subtokens)
+    if with_label:
+        slots.append(pad_label)
 
-    for i, subtokens in enumerate(all_subtokens):
-        if len(subtokens) > max_seq_length:
-            subtokens = [tokenizer.cls_token] + subtokens[-max_seq_length + 1 :]
-            all_input_mask[i] = [1] + all_input_mask[i][-max_seq_length + 1 :]
-            all_loss_mask[i] = [1 - ignore_start_end] + all_loss_mask[i][-max_seq_length + 1 :]
-            all_subtokens_mask[i] = [0] + all_subtokens_mask[i][-max_seq_length + 1 :]
 
-            if with_label:
-                all_slots[i] = [pad_label] + all_slots[i][-max_seq_length + 1 :]
-            too_long_count += 1
+    if len(subtokens) > max_seq_length:
+        subtokens = [tokenizer.cls_token] + subtokens[-max_seq_length + 1 :]
+        input_mask = [1] + input_mask[-max_seq_length + 1 :]
+        loss_mask = [1 - ignore_start_end] + loss_mask[-max_seq_length + 1 :]
+        subtokens_mask = [0] + subtokens_mask[-max_seq_length + 1 :]
 
-        all_input_ids.append([tokenizer.tokens_to_ids(t) for t in subtokens])
-
-        if len(subtokens) < max_seq_length:
-            extra = max_seq_length - len(subtokens)
-            all_input_ids[i] = all_input_ids[i] + [0] * extra
-            all_loss_mask[i] = all_loss_mask[i] + [0] * extra
-            all_subtokens_mask[i] = all_subtokens_mask[i] + [0] * extra
-            all_input_mask[i] = all_input_mask[i] + [0] * extra
-
-            if with_label:
-                all_slots[i] = all_slots[i] + [pad_label] * extra
-
-        all_segment_ids.append([0] * max_seq_length)
-
-    logging.info(f'{too_long_count} are longer than {max_seq_length}')
-
-    logging.info("*** Some Examples of Processed Data***")
-    for i in range(min(len(all_input_ids), 5)):
-        logging.info("i: %s" % (i))
-        logging.info("subtokens: %s" % " ".join(list(map(str, all_subtokens[i]))))
-        logging.info("loss_mask: %s" % " ".join(list(map(str, all_loss_mask[i]))))
-        logging.info("input_mask: %s" % " ".join(list(map(str, all_input_mask[i]))))
-        logging.info("subtokens_mask: %s" % " ".join(list(map(str, all_subtokens_mask[i]))))
         if with_label:
-            logging.info("slots_label: %s" % " ".join(list(map(str, all_slots[i]))))
+            slots = [pad_label] + slots[-max_seq_length + 1 :]
 
-    return (all_input_ids, all_segment_ids, all_input_mask, all_loss_mask, all_subtokens_mask, all_slots)
+    input_ids = [tokenizer.tokens_to_ids(t) for t in subtokens]
+
+    if len(subtokens) < max_seq_length:
+        extra = max_seq_length - len(subtokens)
+        input_ids = input_ids + [0] * extra
+        loss_mask = loss_mask + [0] * extra
+        subtokens_mask = subtokens_mask + [0] * extra
+        input_mask = input_mask + [0] * extra
+
+        if with_label:
+            slots = slots + [pad_label] * extra
+
+    segment_ids = [0] * max_seq_length
+    return (input_ids, segment_ids, input_mask, loss_mask, subtokens_mask, slots)
 
 
 class BertJointIntentSlotDataset(Dataset):
@@ -168,6 +168,7 @@ class BertJointIntentSlotDataset(Dataset):
         ignore_extra_tokens=False,
         ignore_start_end=False,
         do_lower_case=False,
+        augmentation_func=None,
     ):
         if num_samples == 0:
             raise ValueError("num_samples has to be positive", num_samples)
@@ -195,35 +196,39 @@ class BertJointIntentSlotDataset(Dataset):
                 query = query.lower()
             queries.append(query)
 
-        features = get_features(
-            queries,
-            max_seq_length,
-            tokenizer,
-            pad_label=pad_label,
-            raw_slots=raw_slots,
-            ignore_extra_tokens=ignore_extra_tokens,
-            ignore_start_end=ignore_start_end,
-        )
-        self.all_input_ids = features[0]
-        self.all_segment_ids = features[1]
-        self.all_input_mask = features[2]
-        self.all_loss_mask = features[3]
-        self.all_subtokens_mask = features[4]
-        self.all_slots = features[5]
+        self.queries = queries
+        self.max_seq_length = max_seq_length
+        self.tokenizer = tokenizer
+        self.pad_label = pad_label
+        self.raw_slots = raw_slots
+        self.ignore_extra_tokens = ignore_extra_tokens
+        self.ignore_start_end = ignore_start_end
+        self.slot_to_value_mapping = get_slot_value_mapping(queries=self.queries, raw_slots=self.raw_slots, pad_label=self.pad_label)
         self.all_intents = raw_intents
 
     def __len__(self):
-        return len(self.all_input_ids)
+        return len(self.queries)
 
     def __getitem__(self, idx):
+        features =  get_features(
+                    query=self.queries[idx],
+                    max_seq_length=self.max_seq_length,
+                    tokenizer=self.tokenizer,
+                    pad_label=self.pad_label,
+                    raw_slot=self.raw_slots[idx],
+                    ignore_extra_tokens=self.ignore_extra_tokens,
+                    ignore_start_end=self.ignore_start_end,
+                    slot_to_value_mapping=self.slot_to_value_mapping,
+                    with_label=self.raw_slots is not None,
+                    augmentation_func=None)
         return (
-            np.array(self.all_input_ids[idx]),
-            np.array(self.all_segment_ids[idx]),
-            np.array(self.all_input_mask[idx], dtype=np.long),
-            np.array(self.all_loss_mask[idx]),
-            np.array(self.all_subtokens_mask[idx]),
+            np.array(features[0]),
+            np.array(features[1]),
+            np.array(features[2], dtype=np.long),
+            np.array(features[3]),
+            np.array(features[4]),
             self.all_intents[idx],
-            np.array(self.all_slots[idx]),
+            np.array(features[5]),
         )
 
 
