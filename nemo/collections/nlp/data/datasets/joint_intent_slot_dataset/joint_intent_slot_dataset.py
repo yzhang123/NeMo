@@ -25,6 +25,7 @@ https://github.com/huggingface/pytorch-pretrained-BERT
 import numpy as np
 from torch.utils.data import Dataset
 from collections import defaultdict
+import random
 
 from nemo import logging
 from nemo.collections.nlp.data.datasets.datasets_utils import get_stats
@@ -44,19 +45,21 @@ def get_slot_value_mapping(
         for j, word in enumerate(words):
             if raw_slots[i][j] != pad_label:
                 slot_values[raw_slots[i][j]].add(word)
+    for k, v in slot_values.items():
+        slot_values[k] = list(v)
     return slot_values
 
-def augmentation(
+def do_augmentation(
     query,
     raw_slot,
+    prob_to_change,
     slot_to_value_mapping,
-    prob_to_change = 0.2
 ):
     words = query.strip().split()
     for j, word in enumerate(words):
         alternative_values = slot_to_value_mapping.get(raw_slot[j], None)
         if alternative_values:
-            if random.rand() < prob_to_change:
+            if random.random() < prob_to_change:
                 words[j] = random.choice(alternative_values)
 
     return words
@@ -66,17 +69,18 @@ def get_features(
     query,
     max_seq_length,
     tokenizer,
+    prob_to_change,
     slot_to_value_mapping,
     pad_label=128,
     raw_slot=None,
     ignore_extra_tokens=False,
     ignore_start_end=False,
     with_label=False,
-    augmentation_func=None,
+    augmentation=False,
 ):
 
-    if augmentation_func:
-        words = augmentation_func(query, raw_slot, slot_to_value_mapping, prob_to_change=0.2)
+    if augmentation:
+        words = do_augmentation(query, raw_slot, slot_to_value_mapping=slot_to_value_mapping, prob_to_change=prob_to_change)
     else:
         words = query.strip().split()
     subtokens = [tokenizer.cls_token]
@@ -163,12 +167,13 @@ class BertJointIntentSlotDataset(Dataset):
         slot_file,
         max_seq_length,
         tokenizer,
+        prob_to_change,
         num_samples=-1,
         pad_label=128,
         ignore_extra_tokens=False,
         ignore_start_end=False,
         do_lower_case=False,
-        augmentation_func=None,
+        augmentation=False,
     ):
         if num_samples == 0:
             raise ValueError("num_samples has to be positive", num_samples)
@@ -181,6 +186,7 @@ class BertJointIntentSlotDataset(Dataset):
 
         assert len(slot_lines) == len(input_lines)
 
+        self.prob_to_change = prob_to_change
         dataset = list(zip(slot_lines, input_lines))
 
         if num_samples > 0:
@@ -206,6 +212,8 @@ class BertJointIntentSlotDataset(Dataset):
         self.slot_to_value_mapping = get_slot_value_mapping(queries=self.queries, raw_slots=self.raw_slots, pad_label=self.pad_label)
         self.all_intents = raw_intents
 
+        self.augmentation=augmentation
+
     def __len__(self):
         return len(self.queries)
 
@@ -220,7 +228,8 @@ class BertJointIntentSlotDataset(Dataset):
                     ignore_start_end=self.ignore_start_end,
                     slot_to_value_mapping=self.slot_to_value_mapping,
                     with_label=self.raw_slots is not None,
-                    augmentation_func=None)
+                    prob_to_change=self.prob_to_change,
+                    augmentation=self.augmentation)
         return (
             np.array(features[0]),
             np.array(features[1]),

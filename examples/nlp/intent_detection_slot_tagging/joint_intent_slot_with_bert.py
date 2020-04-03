@@ -67,6 +67,7 @@ parser.add_argument("--lr_policy", default="WarmupAnnealing", type=str)
 parser.add_argument("--lr_warmup_proportion", default=0.1, type=float)
 parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument("--fc_dropout", default=0.1, type=float)
+parser.add_argument("--prob_to_change", default=0, type=float, help="probability to do data augmentation")
 
 parser.add_argument("--intent_loss_weight", default=0.6, type=float)
 parser.add_argument("--class_balancing", default="regular", type=str, choices=["regular", "weighted_loss"])
@@ -146,6 +147,8 @@ def create_pipeline(num_samples=-1, batch_size=32, data_prefix='train', is_train
         max_seq_length=args.max_seq_length,
         num_samples=num_samples,
         shuffle=shuffle,
+        augmentation=is_training,
+        prob_to_change=args.prob_to_change,
         batch_size=batch_size,
         ignore_extra_tokens=args.ignore_extra_tokens,
         ignore_start_end=args.ignore_start_end,

@@ -85,12 +85,14 @@ class BertJointIntentSlotDataLayer(TextDataLayer):
         pad_label,
         tokenizer,
         max_seq_length,
+        prob_to_change,
         num_samples=-1,
         shuffle=False,
         batch_size=64,
         ignore_extra_tokens=False,
         ignore_start_end=False,
         do_lower_case=False,
+        augmentation=False,
         dataset_type=BertJointIntentSlotDataset,
     ):
         dataset_params = {
@@ -100,8 +102,10 @@ class BertJointIntentSlotDataLayer(TextDataLayer):
             'tokenizer': tokenizer,
             'max_seq_length': max_seq_length,
             'num_samples': num_samples,
+            'augmentation' : augmentation,
             'ignore_extra_tokens': ignore_extra_tokens,
             'ignore_start_end': ignore_start_end,
+            'prob_to_change': prob_to_change,
             'do_lower_case': do_lower_case,
         }
         super().__init__(dataset_type, dataset_params, batch_size, shuffle=shuffle)
