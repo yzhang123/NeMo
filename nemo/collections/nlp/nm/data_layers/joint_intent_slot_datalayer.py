@@ -16,13 +16,14 @@
 
 from nemo.collections.nlp.data import BertJointIntentSlotDataset, BertJointIntentSlotInferDataset
 from nemo.collections.nlp.nm.data_layers.text_datalayer import TextDataLayer
+from nemo.backends.pytorch import DataLayerNM
 from nemo.core import ChannelType, LabelsType, MaskType, NeuralType
 from nemo.utils.decorators import add_port_docs
 
 __all__ = ['BertJointIntentSlotDataLayer', 'BertJointIntentSlotInferDataLayer']
 
 
-class BertJointIntentSlotDataLayer(TextDataLayer):
+class BertJointIntentSlotDataLayer(DataLayerNM):
     """
     Creates the data layer to use for the task of joint intent
     and slot classification with pretrained model.
@@ -80,36 +81,25 @@ class BertJointIntentSlotDataLayer(TextDataLayer):
 
     def __init__(
         self,
-        input_file,
-        slot_file,
-        pad_label,
-        tokenizer,
-        max_seq_length,
-        prob_to_change,
-        num_samples=-1,
+        dataset,
         shuffle=False,
         batch_size=64,
-        ignore_extra_tokens=False,
-        ignore_start_end=False,
-        do_lower_case=False,
-        augmentation=False,
-        dataset_type=BertJointIntentSlotDataset,
     ):
-        dataset_params = {
-            'input_file': input_file,
-            'slot_file': slot_file,
-            'pad_label': pad_label,
-            'tokenizer': tokenizer,
-            'max_seq_length': max_seq_length,
-            'num_samples': num_samples,
-            'augmentation' : augmentation,
-            'ignore_extra_tokens': ignore_extra_tokens,
-            'ignore_start_end': ignore_start_end,
-            'prob_to_change': prob_to_change,
-            'do_lower_case': do_lower_case,
-        }
-        super().__init__(dataset_type, dataset_params, batch_size, shuffle=shuffle)
+        super().__init__()
+        self._batch_size = batch_size
+        self._shuffle = shuffle
+        self._dataset = dataset
 
+    def __len__(self):
+        return len(self._dataset)
+
+    @property
+    def dataset(self):
+        return self._dataset
+
+    @property
+    def data_iterator(self):
+        return None
 
 class BertJointIntentSlotInferDataLayer(TextDataLayer):
     """

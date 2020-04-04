@@ -32,7 +32,7 @@ import nemo.collections.nlp as nemo_nlp
 from nemo import logging
 from nemo.backends.pytorch.common.losses import CrossEntropyLossNM, LossAggregatorNM
 from nemo.collections.nlp.callbacks.joint_intent_slot_callback import eval_epochs_done_callback, eval_iter_callback
-from nemo.collections.nlp.data.datasets.joint_intent_slot_dataset import JointIntentSlotDataDesc
+from nemo.collections.nlp.data.datasets.joint_intent_slot_dataset import JointIntentSlotDataDesc, BertJointIntentSlotDataset, LabeledAugmentation, value_replacement
 from nemo.collections.nlp.nm.data_layers import BertJointIntentSlotDataLayer
 from nemo.collections.nlp.nm.trainables import JointIntentSlotClassifier
 from nemo.core import CheckpointCallback, SimpleLossLoggerCallback
@@ -139,20 +139,25 @@ def create_pipeline(num_samples=-1, batch_size=32, data_prefix='train', is_train
     slot_file = f'{data_desc.data_dir}/{data_prefix}_slots.tsv'
     shuffle = args.shuffle_data if is_training else False
 
-    data_layer = BertJointIntentSlotDataLayer(
+    dataset = BertJointIntentSlotDataset(
         input_file=data_file,
         slot_file=slot_file,
         pad_label=data_desc.pad_label,
         tokenizer=tokenizer,
         max_seq_length=args.max_seq_length,
         num_samples=num_samples,
-        shuffle=shuffle,
-        augmentation=is_training,
-        prob_to_change=args.prob_to_change,
-        batch_size=batch_size,
         ignore_extra_tokens=args.ignore_extra_tokens,
         ignore_start_end=args.ignore_start_end,
-        do_lower_case=args.do_lower_case,
+        do_lower_case=args.do_lower_case)
+
+    if is_training:
+        dataset = LabeledAugmentation(dataset=dataset, augmentation_func=lambda x, y, z: value_replacement(x, y, z, args.prob_to_change))
+
+
+    data_layer = BertJointIntentSlotDataLayer(
+        dataset=dataset,
+        shuffle=shuffle,
+        batch_size=batch_size,
     )
 
     input_data = data_layer()
