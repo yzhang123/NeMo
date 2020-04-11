@@ -389,13 +389,19 @@ def main(args):
 
 
     target_dials = list()
+    diag_name_to_id = dict()
+    diag_id_to_name = []
     for dial_idx, dial in enumerate(source_dials):
         new_diag = dict()
-        new_diag["dialogue_id"] = dial["dialogue_idx"].split(".json")[0]
+        diag_name = dial["dialogue_idx"].split(".json")[0]
+        assert(diag_name not in diag_name_to_id)
+        diag_name_to_id[diag_name] = len(diag_id_to_name)
+        diag_id_to_name.append(diag_name)
+        new_diag["dialogue_id"] = f"1_{len(diag_id_to_name):05d}"
         new_diag["services"] = get_services_of_dialogue(source_dials, dial_idx, domains)
         if not new_diag["services"]:
             continue
-        new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[new_diag["dialogue_id"]], domain_slots)
+        new_diag["turns"] = get_diag_turns(source_dials, dial_idx, acts[diag_name], domain_slots)
         target_dials.append(new_diag)
 
     with open(f"{args.mode}_{args.target_dials}", 'w') as target_dials_fp:
