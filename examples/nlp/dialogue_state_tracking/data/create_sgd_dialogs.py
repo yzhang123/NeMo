@@ -284,12 +284,12 @@ def get_diag_sys_turn(turn: dict, turn_id: int, diag_acts: dict, prev_domain: st
     return out_turn
 
 def clean_slot(slot: str)->str:
-    slot = slot.split("-")[1]
+    dom, slot = slot.split("-")
     if "book" in slot:
         slot = "".join(slot.split())
-    return slot.strip()
+    return slot.strip(), dom
 
-def get_diag_user_turn(turn: dict)->dict:
+def get_diag_user_turn(turn: dict, domains: List[str])->dict:
     if turn["transcript"] == "":
         return None
     out_turn = dict()
@@ -297,58 +297,64 @@ def get_diag_user_turn(turn: dict)->dict:
     turn["transcript"] = normalize(turn["transcript"])
     out_turn["utterance"] = turn["transcript"] 
     frames = list()
-    dom = turn["domain"]
-    
-    frame = dict()
-    frame["service"] = f"{dom}_1"
-    new_slots = turn["turn_label"]
-    frame["slots"] = []
-    ## populate slot spans if possible
-    for new_slot in new_slots:
-        out_slot = dict()
-        out_slot["slot"] = clean_slot(new_slot[0])
-        is_categorical = None
-        for schema in SCHEMAS:
-            if schema["service_name"] == frame["service"]:
-                for item in schema["slots"]:
-                    if item["name"] == out_slot["slot"]:
-                        is_categorical = item["is_categorical"]
-        if is_categorical:
-            continue
-        slot_val = new_slot[1]
-        m = re.search(slot_val.strip(), turn["transcript"], re.IGNORECASE)
-        if m is None:
-            continue
-        
-        if not turn["transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
-            print(turn["transcript"][m.span()[0]:m.span()[1]], ",", slot_val)
-            if "?" in slot_val:
-                import ipdb; ipdb.set_trace()
-            continue
-        
-        if len(turn["transcript"]) > m.span()[1] and turn["transcript"][m.span()[1]].isalnum():
-            print("ALPHANUM", turn["transcript"], slot_val)
-            continue
-        
-        if m.span()[0]>0 and turn["transcript"][m.span()[0]-1].isalnum():
-            print("ALPHANUM", turn["transcript"], slot_val)
-        
-            continue
-        out_slot["start"] = m.span()[0]
-        out_slot["exclusive_end"] = m.span()[1]
-        frame["slots"].append(out_slot)
 
-    ## populate state based on state_belief
-    all_slots = [x["slots"][0] for x in turn["belief_state"]] # list tuple
-    frame["state"] = dict()
-    frame["state"]["active_intent"] = f"find{dom}"
-    frame["state"]["requested_slots"] = []
-    frame["state"]["slot_values"] = dict()
-    for s, v in all_slots:
-        s = clean_slot(s)
-        if v != "none":
-            frame["state"]["slot_values"][s] = [GENERAL_TYPOS.get(v, v)]
-    frames.append(frame)
+    for dom in domains:
+        if not dom:
+            continue
+        frame = dict()
+        frame["service"] = f"{dom}_1"
+
+        frame["slots"] = []
+        if turn["domain"] == dom: # current domain
+            new_slots = turn["turn_label"]
+            ## populate slot spans if possible
+            for new_slot in new_slots:
+                out_slot = dict()
+                out_slot["slot"], _ = clean_slot(new_slot[0])
+                is_categorical = None
+                for schema in SCHEMAS:
+                    if schema["service_name"] == frame["service"]:
+                        for item in schema["slots"]:
+                            if item["name"] == out_slot["slot"]:
+                                is_categorical = item["is_categorical"]
+                if is_categorical:
+                    continue
+                slot_val = new_slot[1]
+                m = re.search(slot_val.strip(), turn["transcript"], re.IGNORECASE)
+                if m is None:
+                    continue
+                
+                if not turn["transcript"][m.span()[0]:m.span()[1]] == slot_val.strip():
+                    print(turn["transcript"][m.span()[0]:m.span()[1]], ",", slot_val)
+                    if "?" in slot_val:
+                        import ipdb; ipdb.set_trace()
+                    continue
+                
+                if len(turn["transcript"]) > m.span()[1] and turn["transcript"][m.span()[1]].isalnum():
+                    print("ALPHANUM", turn["transcript"], slot_val)
+                    continue
+                
+                if m.span()[0]>0 and turn["transcript"][m.span()[0]-1].isalnum():
+                    print("ALPHANUM", turn["transcript"], slot_val)
+                
+                    continue
+                out_slot["start"] = m.span()[0]
+                out_slot["exclusive_end"] = m.span()[1]
+                frame["slots"].append(out_slot)
+
+        ## populate state based on state_belief
+        all_slots = [x["slots"][0] for x in turn["belief_state"]] # list tuple
+        frame["state"] = dict()
+        frame["state"]["active_intent"] = f"find{dom}"
+        frame["state"]["requested_slots"] = []
+        frame["state"]["slot_values"] = dict()
+        for s, v in all_slots:
+            s, d = clean_slot(s)
+            if d != dom:
+                continue
+            if v != "none":
+                frame["state"]["slot_values"][s] = [GENERAL_TYPOS.get(v, v)]
+        frames.append(frame)
     out_turn["frames"] = frames
     return out_turn
 
@@ -356,21 +362,21 @@ def get_diag_turns(dials: List[dict], dial_idx: int, dialogue_acts: dict, domain
     dialogue = dials[dial_idx]["dialogue"]
     out_turns = list()
 
+
+    prev_domain = None
     for in_turn_id, in_turn in enumerate(dialogue):
         sys_turn = None
         user_turn = None
-        if in_turn_id > 0:
-            prev_domain=dialogue[in_turn_id - 1]["domain"]
-            if prev_domain in domain_slots.keys():
-                sys_turn = get_diag_sys_turn(in_turn, in_turn_id, dialogue_acts, prev_domain=prev_domain, possible_slots=domain_slots[prev_domain])
+        current_domain = in_turn["domain"]
+        if current_domain in domain_slots.keys():
+            sys_turn = get_diag_sys_turn(in_turn, in_turn_id, dialogue_acts, prev_domain=prev_domain, possible_slots=domain_slots[prev_domain])
 
-        if sys_turn is not None:
-            out_turns.append(sys_turn)
-        
-        if in_turn["domain"] in domain_slots.keys():
-            user_turn = get_diag_user_turn(in_turn)
-        if user_turn is not None:
-            out_turns.append(user_turn)
+            if sys_turn is not None:
+                out_turns.append(sys_turn)
+            user_turn = get_diag_user_turn(in_turn, domains=list(set({current_domain, prev_domain})))
+            if user_turn is not None:
+                out_turns.append(user_turn)
+            prev_domain = current_domain
     return out_turns
 
 
