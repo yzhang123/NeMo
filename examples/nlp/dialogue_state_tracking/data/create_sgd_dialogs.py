@@ -345,7 +345,7 @@ def get_diag_user_turn(turn: dict, domains: List[str])->dict:
         ## populate state based on state_belief
         all_slots = [x["slots"][0] for x in turn["belief_state"]] # list tuple
         frame["state"] = dict()
-        frame["state"]["active_intent"] = f"find{dom}"
+        frame["state"]["active_intent"] = f"{dom}_1"
         frame["state"]["requested_slots"] = []
         frame["state"]["slot_values"] = dict()
         for s, v in all_slots:

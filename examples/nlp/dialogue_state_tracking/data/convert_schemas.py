@@ -166,13 +166,13 @@ def get_schema_slots(domain: str, domain_slots: dict) -> List[dict]:
 
 
 def get_schema_intents(domain: str, domain_slots: dict) -> List[dict]:
-    intents = [f"find{domain}"]
+    intents = [f"{domain}"]
     slots = domain_slots[domain].keys() # dict: slot -> list of values
     res = list()
     for intent in intents:
         intent_entry = dict()
-        intent_entry["name"] = intent
-        intent_entry["description"] = f"{domain} {intent}"
+        intent_entry["name"] = f"{intent}_1"
+        intent_entry["description"] = f"{domain}"
         intent_entry["is_transactional"] = True # CHANGE?
         intent_entry["required_slots"] = []
         intent_entry["optional_slots"] = dict([(slot, "dontcare") for slot in slots])
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("--source_categorical_slots", default='categorical_slots.json', type=str)
     parser.add_argument("--source_ontology", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/ontology.json', type=str)
     # parser.add_argument("--source_acts", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/dialogue_acts.json', type=str)
-    parser.add_argument("--target_schema", default='/home/yzhang/data/nlp/MULTIWOZ2.1_bak/schemas.json', type=str)
+    parser.add_argument("--target_schema", default='schemas.json', type=str)
     args = parser.parse_args()
 
     fin = open(args.source_multiwoz_mapping, 'r')
