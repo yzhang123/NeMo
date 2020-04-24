@@ -98,7 +98,7 @@ def pick_replacement_word(ontology, service, slot, old_value):
     assert(isinstance(slot, str))
     assert(isinstance(old_value, str))
     assert(isinstance(service, str))
-    return "MIAMIIIIIIIIII"
+    return "moderate"
 
 #1.
 def augment_dialog_by_auxiliary_entries(dialogue):
@@ -146,12 +146,22 @@ def get_sentence_components(turn):
     """
     sentence = turn["utterance"]
     word_indices = np.asarray([False for _ in range(len(sentence) + 1)])
+    # find known keywords
     for frame in turn["frames"]:
-        for k, v in frame["state"]["slot_values"].items():
-            v = v[0]
-            m = re.search(v, sentence)
-            if m:
-                word_indices[m.start():m.end()]=True
+        if "state" in frame:
+            for k, v in frame["state"]["slot_values"].items():
+                v = v[0]
+                m = re.search(v, sentence)
+                if m:
+                    word_indices[m.start():m.end()]=True
+        if "actions" in frame:
+            for action in frame["actions"]:
+                k = action["slot"]
+                for v in action["values"]:
+                    m = re.search(v, sentence)
+                    if m:
+                        word_indices[m.start():m.end()]=True
+
     for i in range(len(sentence)):
         if sentence[i].isalnum():
             word_indices[i] = True
@@ -167,17 +177,25 @@ def get_sentence_components(turn):
         idx += 1
     return res
             
-def find_new_word_in_turn(word, turn):
+def find_word_in_turn(word, turn):
     assert(isinstance(word, str))
     frames = turn["frames"]
     for frame_id, frame in enumerate(frames):
-        for k, v in frame["state"]["slot_values"].items():
-            if k in frame["state_update"] and word == v[0]:
-                return frame_id, frame["service"], k, v[0]
+        
+        if "state" in frame: 
+            for k, v in frame["state"]["slot_values"].items():
+                if k in frame["state_update"] and word == v[0]:
+                    return frame_id, frame["service"], k, word
+        if "actions" in frame:
+            for action in frame["actions"]:
+                k = action["slot"]
+                for v in action["values"]:
+                    if v == word:
+                        return frame_id, frame["service"], k, word
     return None
 
 # 3. 
-def replace(dialogue, turn_id, start_idx, end_idx, ontology):
+def replace(dialogue, turn_id, start_idx, end_idx, new_value, ontology):
     assert(isinstance(turn_id, int))
     assert(isinstance(start_idx, int))
     assert(isinstance(end_idx, int))
@@ -199,16 +217,15 @@ def replace(dialogue, turn_id, start_idx, end_idx, ontology):
     turn = dialogue["turns"][turn_id]
     sentence = turn["utterance"]
     old_value = sentence[start_idx: end_idx]
-    found = find_new_word_in_turn(old_value, turn)
+    found = find_word_in_turn(old_value, turn)
     if found:
         frame_id, service, key, _ = found
         frame = turn["frames"][frame_id]
-        new_value = pick_replacement_word(ontology, frame["service"], key, old_value)
 
-        affected_frames = [(turn_id, frame_id, service, key)] + frame["state_update"][key]
+        affected_frames = [(turn_id, frame_id, service, key)]
+        affected_frames += frame["state_update"][key]
         for affected in affected_frames:
             affected_turn_id, affected_frame_id, affected_service, affected_slot = affected
-            
             replace_frame_values(dialogue["turns"][affected_turn_id], affected_service, affected_slot,  old_value, new_value)
             
 def digit2str(x):
@@ -242,20 +259,29 @@ def validate(dialogue):
 
 
 
-dialogue = copy.deepcopy(orig_dialog[0])
-augment_dialog_by_auxiliary_entries(dialogue)
-spans = get_sentence_components(dialogue["turns"][2])
-replace(dialogue, 2, start_idx=spans[-1][0], end_idx=spans[-1][1], ontology=ontology)
+def test_helper(dialogues, dialogue_id, turn_id, span_id, new_word):
+    dialogue = copy.deepcopy(dialogues[dialogue_id])
+    augment_dialog_by_auxiliary_entries(dialogue)
+    spans = get_sentence_components(dialogue["turns"][turn_id])
+    replace(dialogue, turn_id, start_idx=spans[span_id][0], new_value=new_word,  end_idx=spans[span_id][1], ontology=ontology)
 
-for turn in dialogue["turns"]:
-    for frame in turn["frames"]:
-        if "state_update" in frame:
-            frame.pop("state_update")
-pprint(dialogue)
-validate(dialogue)
-d_str_new = json.dumps(dialogue, sort_keys=True, indent=2)
-d_str_old = json.dumps(orig_dialog[0], sort_keys=True, indent=2)
-print(d_str_new == d_str_old)
+    for turn in dialogue["turns"]:
+        for frame in turn["frames"]:
+            if "state_update" in frame:
+                frame.pop("state_update")
+    validate(dialogue)
+    d_str_new = json.dumps(dialogue, sort_keys=True, indent=2)
+    d_str_old = json.dumps(dialogues[dialogue_id], sort_keys=True, indent=2)
+    pprint(dialogue)
+    print(d_str_new == d_str_old)
+
+
+# test_helper(orig_dialog, dialogue_id=1, turn_id=5, span_id=3, new_word="EXPENSIVEEE") # system cat
+# test_helper(orig_dialog, dialogue_id=0, turn_id=2, span_id=-1, new_word="MIAMIIII") # user non-cat
+test_helper(orig_dialog, dialogue_id=0, turn_id=12, span_id=14, new_word="moderate")
+
+
+
 
 
 
