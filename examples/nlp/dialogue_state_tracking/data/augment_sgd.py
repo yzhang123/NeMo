@@ -38,7 +38,6 @@ def replace_frame_values(turn, service, key, old_value, new_value):
     for frame in turn["frames"]:
         if frame["service"] == service:
             st_ch_idx, exclusive_end_ch_idx = frame['slot_to_span'].get(key, {old_value: (-1, -1)}).get(old_value, (-1, -1))
-            print(turn["utterance"])
             if st_ch_idx != -1:
                 for slot in frame.get('slots', []):
                     if st_ch_idx < slot['start']:
@@ -168,8 +167,6 @@ def get_sentence_components(turn):
         idx += 1
     return res
             
-
-
 def find_new_word_in_turn(word, turn):
     assert(isinstance(word, str))
     frames = turn["frames"]
@@ -178,7 +175,6 @@ def find_new_word_in_turn(word, turn):
             if k in frame["state_update"] and word == v[0]:
                 return frame_id, frame["service"], k, v[0]
     return None
-
 
 # 3. 
 def replace(dialogue, turn_id, start_idx, end_idx, ontology):
@@ -215,12 +211,6 @@ def replace(dialogue, turn_id, start_idx, end_idx, ontology):
             
             replace_frame_values(dialogue["turns"][affected_turn_id], affected_service, affected_slot,  old_value, new_value)
             
-
-
-
-
-
-
 def digit2str(x):
     x = x.split()
     for i in range(len(x)):
@@ -228,6 +218,26 @@ def digit2str(x):
             x[i] = num2words(x[i])
     return " ".join(x)
 
+
+
+def validate(dialogue):
+    # check slot spans match utterance and state value
+    # check slot_values format
+    # check slot spans appear in actions/state
+    for turn in dialogue["turns"]:
+        for frame in turn["frames"]:
+            for slot in frame["slots"]:
+                st_idx, end_idx, key = slot["start"], slot["exclusive_end"], slot["slot"]
+                if turn["speaker"] == "SYSTEM":
+                    found_key = False
+                    for action in frame["actions"]:
+                        if action["slot"] == key:
+                            found_key = True
+                            assert(turn["utterance"][st_idx: end_idx] in action["values"])
+                    assert(found_key)
+                else:
+                    assert(key in frame["state"]["slot_values"])
+                    assert(turn["utterance"][st_idx: end_idx] == frame["state"]["slot_values"][key][0])
 
 
 
@@ -242,12 +252,10 @@ for turn in dialogue["turns"]:
         if "state_update" in frame:
             frame.pop("state_update")
 pprint(dialogue)
+validate(dialogue)
 d_str_new = json.dumps(dialogue, sort_keys=True, indent=2)
 d_str_old = json.dumps(orig_dialog[0], sort_keys=True, indent=2)
 print(d_str_new == d_str_old)
 
-# print(spans)
-# for span in spans:
-#     print(f"#{dialogue['turns'][2]['utterance'][span[0]: span[1]]}#")
 
 
