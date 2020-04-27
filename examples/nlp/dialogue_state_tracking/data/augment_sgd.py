@@ -8,19 +8,42 @@ import re
 from collections import defaultdict
 import copy
 import numpy as np
-in_file_path = '/home/yzhang/data/nlp/sgd/train/dialogues_001.json' #sys.argv[1]
+in_file_path = '/home/yzhang/data/nlp/sgd/train/' # dialogues_001.json' #sys.argv[1]
 schema_path = '/home/yzhang/data/nlp/sgd/train/schema.json' #sys.argv[2]
 
-orig_dialog = json.load(open(in_file_path, 'r'))
+dialogue_files = [os.path.join(in_file_path, f) for f in os.listdir(in_file_path) if os.path.isfile(os.path.join(in_file_path, f)) if "dialogue" in f]
+dialogue_files.sort()
+orig_dialog = []
+for d_file in dialogue_files:
+    orig_dialog.extend(json.load(open(d_file, 'r')))
+print(f"len(orig_dialog) = {len(orig_dialog)}")
 orig_schema = json.load(open(schema_path, 'r'))
 
-is_categorical=dict()
+ontology=defaultdict(defaultdict)
 for schema in orig_schema:
     service_name = schema['service_name']
     for slot in schema['slots']:
         slot_name = slot['name']
-        is_categorical[(service_name, slot_name)] = slot['is_categorical']
-ontology = {}
+        ontology[(service_name, slot_name)]["is_categorical"] = slot['is_categorical']
+        ontology[(service_name, slot_name)]["possible_values"] = set(slot['possible_values'])
+
+for dialogue in orig_dialog:
+    for turn in dialogue["turns"]:
+        for frame in turn["frames"]:
+            service_name = frame["service"]
+            if "state" in frame:
+                for k, vs in frame["state"]["slot_values"].items():
+                    for v in vs:
+                        ontology[(service_name, k)]["possible_values"].add(v)
+            if "actions" in frame:
+                for action in frame["actions"]:
+                    k = action["slot"]
+                    for v in action["values"]:
+                        try:
+                            ontology[(service_name, k)]["possible_values"].add(v)
+                        except:
+                            continue
+
 
 def update_spans(dialogue, turn_id, frame_id, start_idx, end_idx, old_value, new_value):
     """
