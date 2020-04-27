@@ -54,9 +54,10 @@ def update_values(dialogue, turn_id, frame_id, key, old_value, new_value):
                 action["values"].remove(old_value)
                 action["values"].append(new_value)
     if "state" in frame:
-        for k, v in frame["state"]["slot_values"].items():
-            if k == key and v[0] == old_value:
-                v[0] = new_value
+        for k, vs in frame["state"]["slot_values"].items():
+            for v_id, v in enumerate(vs):
+                if k == key and v == old_value:
+                    vs[v_id] = new_value
 
     for k, vs in frame["slot_to_span"].items():
         for v, spans in vs.items():
@@ -81,7 +82,7 @@ def get_affected_future_frames(dialogue, from_turn_id, slot_name, slot_value, se
                             res.append((turn_id, frame_id, slot_name))
                             continue
             else:
-                if frame["service"] == service and frame["state"]["slot_values"].get(slot_name, [None])[0] == slot_value:
+                if frame["service"] == service and slot_value in frame["state"]["slot_values"].get(slot_name, []) :
                     res.append((turn_id, frame_id, slot_name))
                     continue
     return res
@@ -115,12 +116,13 @@ def augment_dialog_by_auxiliary_entries(dialogue):
             for frame in turn["frames"]:
                 new_slots = defaultdict(list) # map from slot_value -> List[frames] in future
                 slot_to_spans = defaultdict(dict)
-                for k, v in frame["state"]["slot_values"].items():
-                    m = re.search(v[0], turn["utterance"])
-                    if m:
-                        slot_to_spans[slot][v[0]]=[m.start(), m.end()]
-                    if k not in prev_state_slots_user or prev_state_slots_user[k] != v:
-                        new_slots[k] = get_affected_future_frames(dialogue, turn_id + 1, slot_name=k, slot_value=v[0], service=frame["service"])
+                for k, vs in frame["state"]["slot_values"].items():
+                    for v_id, v in enumerate(vs):
+                        m = re.search(v, turn["utterance"])
+                        if m:
+                            slot_to_spans[slot][v]=[m.start(), m.end()]
+                        if k not in prev_state_slots_user or v not in prev_state_slots_user[k]:
+                            new_slots[k] = get_affected_future_frames(dialogue, turn_id + 1, slot_name=k, slot_value=v, service=frame["service"])
                 frame["state_update"] = new_slots
                 frame["slot_to_span"] = slot_to_spans
 
@@ -185,8 +187,8 @@ def find_word_in_turn(dialogue, turn_id, value, start_idx, end_idx):
     res = []
     for frame_id, frame in enumerate(frames):
         if "state" in frame: 
-            for k, v in frame["state"]["slot_values"].items():
-                if k in frame["state_update"] and value == v[0]:
+            for k, vs in frame["state"]["slot_values"].items():
+                if k in frame["state_update"] and value in vs:
                     res.append((turn_id, frame_id, k))
         if "actions" in frame:
             # system doesnt need state_update
@@ -265,23 +267,34 @@ def validate(dialogue):
                 else:
                     assert(key in frame["state"]["slot_values"])
                     try:
-                        assert(turn["utterance"][st_idx: end_idx] == frame["state"]["slot_values"][key][0])
+                        assert(turn["utterance"][st_idx: end_idx] in frame["state"]["slot_values"][key])
                     except:
                         raise ValueError
 
 
 
 
-def test_helper(dialogues, dialogue_id, turn_id, span_id, new_value):
-    dialogue = copy.deepcopy(dialogues[dialogue_id])
-    augment_dialog_by_auxiliary_entries(dialogue)
-    spans = get_sentence_components(dialogue["turns"][turn_id])
-    replace(dialogue, turn_id=turn_id, start_idx=spans[span_id][0], end_idx=spans[span_id][1], new_value=new_value)
+def test_helper(dialogue, dialogue_id, turn_id, start_idx, end_idx, new_value):
+    replace(dialogue, turn_id=turn_id, start_idx=start_idx, end_idx=end_idx, new_value=new_value)
 
     for turn in dialogue["turns"]:
         for frame in turn["frames"]:
             if "state_update" in frame:
                 frame.pop("state_update")
+
+# test_helper(orig_dialog, dialogue_id=1, turn_id=5, span_id=3, new_value="EXPENSIVEEE") # system cat, moderate
+# test_helper(orig_dialog, dialogue_id=0, turn_id=2, span_id=-1, new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
+# test_helper(orig_dialog, dialogue_id=0, turn_id=12, span_id=14, new_value="MODERATE") # replace value that does not match slotx
+
+def test(dialogues, dialogue_id, turn_id, old_value, new_value):
+    
+    dialogue = copy.deepcopy(dialogues[dialogue_id])
+    augment_dialog_by_auxiliary_entries(dialogue)
+    # spans = get_sentence_components(dialogue["turns"][turn_id])
+    m = re.search(old_value, dialogue["turns"][turn_id]["utterance"])
+    
+    test_helper(dialogue, dialogue_id, turn_id, start_idx=m.start(),end_idx=m.end(), new_value=new_value)
+    
     pprint(dialogue)
     validate(dialogue)
     d_str_new = json.dumps(dialogue, sort_keys=True, indent=2)
@@ -289,12 +302,11 @@ def test_helper(dialogues, dialogue_id, turn_id, span_id, new_value):
     print(d_str_new == d_str_old)
 
 
-# test_helper(orig_dialog, dialogue_id=1, turn_id=5, span_id=3, new_value="EXPENSIVEEE") # system cat, moderate
-# test_helper(orig_dialog, dialogue_id=0, turn_id=2, span_id=-1, new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
-# test_helper(orig_dialog, dialogue_id=0, turn_id=12, span_id=14, new_value="MODERATE") # replace value that does not match slot
 
 
-
-
-
+# test(dialogues=orig_dialog, dialogue_id=1, turn_id=5, old_value="moderate", new_value="EXPENSIVEEE") # system cat, moderate
+# test(dialogues=orig_dialog, dialogue_id=0, turn_id=2, old_value="San Jose", new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
+# test(dialogues=orig_dialog, dialogue_id=0, turn_id=12, old_value="economical", new_value="MODERATE") # replace value that does not match slotx
+# test(dialogues=orig_dialog, dialogue_id=0, turn_id=3, old_value="Mexican", new_value="MEXICANNN") # sys non-cat 
+# test(dialogues=orig_dialog, dialogue_id=0, turn_id=5, old_value="San Jose", new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
 
