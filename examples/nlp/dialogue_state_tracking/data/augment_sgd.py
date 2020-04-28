@@ -7,6 +7,8 @@ from pprint import pprint
 import re
 from collections import defaultdict
 import copy
+import random
+from tqdm import tqdm
 import numpy as np
 in_file_path = '/home/yzhang/data/nlp/sgd/train/' # dialogues_001.json' #sys.argv[1]
 schema_path = '/home/yzhang/data/nlp/sgd/train/schema.json' #sys.argv[2]
@@ -43,6 +45,7 @@ for dialogue in orig_dialog:
                             ontology[(service_name, k)]["possible_values"].add(v)
                         except:
                             continue
+
 
 
 def update_spans(dialogue, turn_id, frame_id, start_idx, end_idx, old_value, new_value):
@@ -83,10 +86,10 @@ def update_values(dialogue, turn_id, frame_id, key, old_value, new_value):
                     vs[v_id] = new_value
 
     for k, vs in frame["slot_to_span"].items():
-        for v, spans in vs.items():
+        for v, spans in list(vs.items()):
             if k == key and v == old_value:
-                frame["slot_to_span"][k].pop(v)
-                frame["slot_to_span"][k][new_value] = spans
+                vs.pop(v)
+                vs[new_value] = spans
 
 
 def get_affected_future_frames(dialogue, from_turn_id, slot_name, slot_value, service):
@@ -121,33 +124,43 @@ def augment_dialog_by_auxiliary_entries(dialogue):
     prev_service_user = ""
     prev_state_slots_user = {} # key, value
     for turn_id, turn in enumerate(dialogue["turns"]):
+        for frame in turn["frames"]:
+            slot_to_spans = defaultdict(dict)
+            for slot in frame["slots"]:
+                k = slot["slot"]
+                start_idx, end_idx = slot["start"], slot["exclusive_end"]
+                slot_to_spans[k][turn["utterance"][start_idx: end_idx]]=[start_idx, end_idx]
+            frame["slot_to_span"] = slot_to_spans
+
         if turn["speaker"] == "SYSTEM":
             for frame in turn["frames"]:
                 new_slots = defaultdict(list)
-                slot_to_spans = defaultdict(dict)
                 for action in frame["actions"]:
                     slot = action["slot"]
                     slot_values = action["values"]
                     for v in slot_values:
                         new_slots[slot] = get_affected_future_frames(dialogue, turn_id + 1, slot_name=slot, slot_value=v, service=frame["service"])
-                        m = re.search(v, turn["utterance"])
-                        if m:
-                            slot_to_spans[slot][v]=[m.start(), m.end()]
+                        if v in turn["utterance"]:
+                            if slot not in frame["slot_to_span"] or v not in frame["slot_to_span"][slot]:
+                                if len(turn["utterance"].split(v)) == 2: 
+                                    start_idx = turn["utterance"].index(v)
+                                    end_idx = start_idx + len(v)
+                                    frame["slot_to_span"][slot][v]=[start_idx, end_idx]
                 frame["state_update"] = new_slots
-                frame["slot_to_span"] = slot_to_spans
         else:
             for frame in turn["frames"]:
                 new_slots = defaultdict(list) # map from slot_value -> List[frames] in future
-                slot_to_spans = defaultdict(dict)
                 for k, vs in frame["state"]["slot_values"].items():
                     for v_id, v in enumerate(vs):
-                        m = re.search(v, turn["utterance"])
-                        if m:
-                            slot_to_spans[slot][v]=[m.start(), m.end()]
+                        if v in turn["utterance"]:
+                            if k not in frame["slot_to_span"] or v not in frame["slot_to_span"][k]:
+                                if len(turn["utterance"].split(v)) == 2: 
+                                    start_idx = turn["utterance"].index(v)
+                                    end_idx = start_idx + len(v)
+                                    frame["slot_to_span"][k][v]=[start_idx, end_idx]
                         if k not in prev_state_slots_user or v not in prev_state_slots_user[k]:
                             new_slots[k] = get_affected_future_frames(dialogue, turn_id + 1, slot_name=k, slot_value=v, service=frame["service"])
                 frame["state_update"] = new_slots
-                frame["slot_to_span"] = slot_to_spans
 
             if len(turn["frames"]) == 1:
                 use_frame = turn["frames"][0]
@@ -156,7 +169,8 @@ def augment_dialog_by_auxiliary_entries(dialogue):
             prev_service_user = use_frame["service"]
             prev_state_slots_user = use_frame["state"]["slot_values"]
 
-# 2. 
+
+# 2.    
 def get_sentence_components(turn):
     """
     return list of start and end indices of all terms(words can be multiple words )
@@ -168,16 +182,18 @@ def get_sentence_components(turn):
         if "state" in frame:
             for k, v in frame["state"]["slot_values"].items():
                 v = v[0]
-                m = re.search(v, sentence)
-                if m:
-                    word_indices[m.start():m.end()]=True
+                if v in sentence:
+                    start_idx = sentence.index(v)
+                    end_idx = start_idx + len(v)
+                    word_indices[start_idx:end_idx]=True
         if "actions" in frame:
             for action in frame["actions"]:
                 k = action["slot"]
                 for v in action["values"]:
-                    m = re.search(v, sentence)
-                    if m:
-                        word_indices[m.start():m.end()]=True
+                    if v in sentence:
+                        start_idx = sentence.index(v)
+                        end_idx = start_idx + len(v)
+                        word_indices[start_idx:end_idx]=True
 
     for i in range(len(sentence)):
         if sentence[i].isalnum():
@@ -209,18 +225,42 @@ def find_word_in_turn(dialogue, turn_id, value, start_idx, end_idx):
     frames = dialogue["turns"][turn_id]["frames"]
     res = []
     for frame_id, frame in enumerate(frames):
-        if "state" in frame: 
-            for k, vs in frame["state"]["slot_values"].items():
-                if k in frame["state_update"] and value in vs:
-                    res.append((turn_id, frame_id, k))
-        if "actions" in frame:
-            # system doesnt need state_update
-            for action in frame["actions"]:
-                k = action["slot"]
-                for v in action["values"]:
-                    if v == value:
-                        res.append((turn_id, frame_id, k))
+        for slot in frame["slots"]:
+            if start_idx == slot["start"] and end_idx == slot["exclusive_end"]:
+                res.append((turn_id, frame_id, slot["slot"]))
+        # if "state" in frame: 
+        #     for k, vs in frame["state"]["slot_values"].items():
+        #         if k in frame["state_update"] and value in vs:
+        #             res.append((turn_id, frame_id, k))
+        # if "actions" in frame:
+        #     # system doesnt need state_update
+        #     for action in frame["actions"]:
+        #         k = action["slot"]
+        #         for v in action["values"]:
+        #             if v == value:
+        #                 res.append((turn_id, frame_id, k))
     return res
+
+
+def get_new_value(dialogue, turn_id, value, start_idx, end_idx):
+    """
+    find value only in new state_update
+    dialogue
+    turn_id
+    value
+    start_idx
+    end_idx
+
+    return  List[(turn_id, frame_id, key)]
+    """
+    candidates = find_word_in_turn(dialogue, turn_id, value, start_idx, end_idx)
+    possible_values = set()
+    for _, frame_id, k in candidates:
+        frame = dialogue["turns"][turn_id]["frames"][frame_id]
+        service = frame["service"]
+        if "possible_values" in ontology[(service, k)]:
+            possible_values.update(ontology[(service, k)]["possible_values"])
+    return random.choice(list(possible_values)) if possible_values else None
 
 # 3. 
 def replace(dialogue, turn_id, start_idx, end_idx, new_value):
@@ -240,7 +280,7 @@ def replace(dialogue, turn_id, start_idx, end_idx, new_value):
     """
     turn = dialogue["turns"][turn_id]
     sentence = turn["utterance"]
-    old_value = sentence[start_idx: end_idx]
+    old_value = sentence[start_idx:end_idx]
     affected_values = find_word_in_turn(dialogue=dialogue, turn_id=turn_id, value=old_value, start_idx=start_idx, end_idx=end_idx)
     affected_spans = [(turn_id, start_idx, end_idx)]
     for _, frame_id, key in affected_values.copy():
@@ -254,14 +294,18 @@ def replace(dialogue, turn_id, start_idx, end_idx, new_value):
                 affected_spans += [(a_turn_id, spans[0], spans[1])]
     
     for a_turn_id, a_frame_id, a_key in affected_values:
-        assert(a_key==key)
         update_values(dialogue, a_turn_id, a_frame_id, a_key, old_value, new_value)
     for a_turn_id, start_idx, end_idx in affected_spans:
-        for a_frame_id in range(len(dialogue["turns"][a_turn_id]["frames"])):
+        turn = dialogue["turns"][a_turn_id]
+        assert(old_value==turn["utterance"][start_idx:end_idx])
+        for a_frame_id in range(len(turn["frames"])):
             update_spans(dialogue, a_turn_id, a_frame_id, start_idx, end_idx, old_value, new_value)
         # update utterance
-        dialogue["turns"][a_turn_id]["utterance"] = dialogue["turns"][a_turn_id]["utterance"][:start_idx] + new_value + dialogue["turns"][a_turn_id]["utterance"][end_idx:]
-            
+        turn["utterance"] = turn["utterance"][:start_idx] + new_value + turn["utterance"][end_idx:]
+        # if 'Please confirm: I am booking a table ' in turn["utterance"]:
+        #     import ipdb; ipdb.set_trace()
+
+
 def digit2str(x):
     x = x.split()
     for i in range(len(x)):
@@ -273,27 +317,25 @@ def validate(dialogue):
     # check slot spans match utterance and state value
     # check slot_values format
     # check slot spans appear in actions/state
-    for turn in dialogue["turns"]:
-        for frame in turn["frames"]:
+    for turn_id, turn in enumerate(dialogue["turns"]):
+        for frame_id, frame in enumerate(turn["frames"]):
             for slot in frame["slots"]:
-                st_idx, end_idx, key = slot["start"], slot["exclusive_end"], slot["slot"]
-                if turn["speaker"] == "SYSTEM":
-                    found_key = False
-                    for action in frame["actions"]:
-                        if action["slot"] == key:
-                            found_key = True
-                            try:
-                                assert(turn["utterance"][st_idx: end_idx] in action["values"])
-                            except:
-                                raise ValueError
-                    assert(found_key)
-                else:
-                    assert(key in frame["state"]["slot_values"])
-                    try:
-                        assert(turn["utterance"][st_idx: end_idx] in frame["state"]["slot_values"][key])
-                    except:
-                        raise ValueError
-
+                try:
+                    st_idx, end_idx, key = slot["start"], slot["exclusive_end"], slot["slot"]
+                    word = turn["utterance"][st_idx:end_idx]
+                    assert(0 <= st_idx < end_idx <= len(turn["utterance"]))
+                    if turn["speaker"] == "SYSTEM":
+                        found_key = False
+                        for action in frame["actions"]:
+                            if action["slot"] == key:
+                                found_key = True
+                                assert(word in action["values"])
+                        assert(found_key)
+                    else:
+                        if key in frame["state"]["slot_values"]:
+                            assert(word in frame["state"]["slot_values"][key])
+                except:
+                    raise ValueError(f"Turn {turn_id}, frame {frame_id}")
 
 
 
@@ -332,4 +374,66 @@ def test(dialogues, dialogue_id, turn_id, old_value, new_value):
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=12, old_value="economical", new_value="MODERATE") # replace value that does not match slotx
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=3, old_value="Mexican", new_value="MEXICANNN") # sys non-cat 
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=5, old_value="San Jose", new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
+
+if __name__=="__main__":
+    repeat = 5
+    keep_untouched = 0.5
+    replace_prob = 0.5
+    random.seed(0)
+
+    dialogue_count = defaultdict(int)
+    final_dialogues = defaultdict(list)
+    for dialogue in tqdm(orig_dialog):
+        try:
+            validate(dialogue)
+        except:
+            import ipdb; ipdb.set_trace()
+        augment_dialog_by_auxiliary_entries(dialogue)
+        validate(dialogue)
+    
+    for _ in range(repeat):
+        dialogues = copy.deepcopy(orig_dialog)
+        replace_success = 0
+        replace_failed = 0
+        for dialogue_id, dialogue in tqdm(enumerate(dialogues)):
+            d_id, d_count = dialogue["dialogue_id"].split("_")
+            d_id = int(d_id)
+            dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
+            dialogue_count[d_id]+=1 
+            for turn_id, turn in enumerate(dialogue["turns"]):
+                if random.random() > keep_untouched:
+                    spans = get_sentence_components(turn=turn)
+                    for span in reversed(spans):
+                        if random.random() < replace_prob:
+                            old_value = dialogue["turns"][turn_id]["utterance"][span[0]:span[1]]
+                            new_value = get_new_value(dialogue, turn_id, old_value, span[0], span[1])
+                            if new_value:
+                                # print(old_value)
+                                tmp_dialogue = copy.deepcopy(dialogue)
+                                try:
+                                    replace(tmp_dialogue, turn_id, span[0], span[1], new_value)
+                                    validate(tmp_dialogue)
+                                    for k, v  in tmp_dialogue.items():
+                                        dialogue[k] = v
+                                    replace_success += 1
+                                except:
+                                    replace_failed += 1
+                                    pass
+            for turn in dialogue["turns"]:
+                for frame in turn["frames"]:
+                    if 'state_update' in frame:
+                        frame.pop("state_update")
+                    if 'slot_to_span' in frame:
+                        frame.pop("slot_to_span")
+            final_dialogues[d_id].append(dialogue)
+        print(f"Replacement success {replace_success}, failed {replace_failed}\n")
+    
+    output_dir = f"augmented_repeat{repeat}_keep_untouched{keep_untouched}_replace_prob{replace_prob}"
+    os.makedirs(output_dir, exist_ok=True)
+    for dir_id, dialogues in final_dialogues.items():
+        with open(os.path.join(output_dir, f"dialogues_{dir_id:03d}.json"), 'w') as outfile:
+            json.dump(dialogues, outfile)
+
+
+
 
