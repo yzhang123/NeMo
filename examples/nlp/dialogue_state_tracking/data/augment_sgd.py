@@ -5,6 +5,7 @@ import json
 from num2words import num2words 
 from pprint import pprint
 import re
+import argparse
 from collections import defaultdict
 import copy
 import random
@@ -376,22 +377,33 @@ def test(dialogues, dialogue_id, turn_id, old_value, new_value):
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=5, old_value="San Jose", new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
 
 if __name__=="__main__":
-    repeat = 5
-    keep_untouched = 0.5
-    replace_prob = 0.5
-    random.seed(0)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--concat_orig_dialogue", action="store_true")
+    parser.add_argument("--repeat", type=int, default=5)
+    parser.add_argument("--keep_untouched", type=float, default=0.5)
+    parser.add_argument("--replace_prob", type=float, default=0.5)
+    parser.add_argument("--seed", type=int, default=0)
+    args = parser.parse_args()
+    random.seed(args.seed)
 
     dialogue_count = defaultdict(int)
     final_dialogues = defaultdict(list)
-    for dialogue in tqdm(orig_dialog):
+    for dialogue_id, dialogue in tqdm(enumerate(orig_dialog)):
         try:
             validate(dialogue)
         except:
             import ipdb; ipdb.set_trace()
         augment_dialog_by_auxiliary_entries(dialogue)
         validate(dialogue)
+        if args.concat_orig_dialogue:
+            d_id, d_count = dialogue["dialogue_id"].split("_")
+            d_id = int(d_id)
+            dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
+            dialogue_count[d_id]+=1 
+            final_dialogues[d_id].append(dialogue)
+
     
-    for _ in range(repeat):
+    for _ in range(args.repeat):
         dialogues = copy.deepcopy(orig_dialog)
         replace_success = 0
         replace_failed = 0
@@ -401,10 +413,10 @@ if __name__=="__main__":
             dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
             dialogue_count[d_id]+=1 
             for turn_id, turn in enumerate(dialogue["turns"]):
-                if random.random() > keep_untouched:
+                if random.random() > args.keep_untouched:
                     spans = get_sentence_components(turn=turn)
                     for span in reversed(spans):
-                        if random.random() < replace_prob:
+                        if random.random() < args.replace_prob:
                             old_value = dialogue["turns"][turn_id]["utterance"][span[0]:span[1]]
                             new_value = get_new_value(dialogue, turn_id, old_value, span[0], span[1])
                             if new_value:
@@ -428,7 +440,7 @@ if __name__=="__main__":
             final_dialogues[d_id].append(dialogue)
         print(f"Replacement success {replace_success}, failed {replace_failed}\n")
     
-    output_dir = f"augmented_repeat{repeat}_keep_untouched{keep_untouched}_replace_prob{replace_prob}"
+    output_dir = f"augmented_repeat{args.repeat}_keep_untouched{args.keep_untouched}_replace_prob{args.replace_prob}_concatorig{args.concat_orig_dialogue}"
     os.makedirs(output_dir, exist_ok=True)
     for dir_id, dialogues in final_dialogues.items():
         with open(os.path.join(output_dir, f"dialogues_{dir_id:03d}.json"), 'w') as outfile:
