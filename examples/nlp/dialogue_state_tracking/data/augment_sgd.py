@@ -11,8 +11,20 @@ import copy
 import random
 from tqdm import tqdm
 import numpy as np
-in_file_path = '/home/yzhang/data/nlp/sgd/train/' # dialogues_001.json' #sys.argv[1]
-schema_path = '/home/yzhang/data/nlp/sgd/train/schema.json' #sys.argv[2]
+parser = argparse.ArgumentParser()
+parser.add_argument("--concat_orig_dialogue", action="store_true")
+parser.add_argument("--data_dir", type=str, default="/home/yzhang/data/nlp/sgd/train/")
+parser.add_argument("--dataset", choices=["sgd", "multiwoz"], type=str, required=True)
+parser.add_argument("--num2string", action="store_true")
+parser.add_argument("--repeat", type=int, default=5)
+parser.add_argument("--replace_turn_prob", type=float, default=1.0)
+parser.add_argument("--replace_word_prob", type=float, default=1.0)
+parser.add_argument("--seed", type=int, default=0)
+args = parser.parse_args()
+random.seed(args.seed)
+
+in_file_path = args.data_dir
+schema_path = os.path.join(in_file_path, 'schema.json')
 
 dialogue_files = [os.path.join(in_file_path, f) for f in os.listdir(in_file_path) if os.path.isfile(os.path.join(in_file_path, f)) if "dialogue" in f]
 dialogue_files.sort()
@@ -22,30 +34,34 @@ for d_file in dialogue_files:
 print(f"len(orig_dialog) = {len(orig_dialog)}")
 orig_schema = json.load(open(schema_path, 'r'))
 
-ontology=defaultdict(defaultdict)
-for schema in orig_schema:
-    service_name = schema['service_name']
-    for slot in schema['slots']:
-        slot_name = slot['name']
-        ontology[(service_name, slot_name)]["is_categorical"] = slot['is_categorical']
-        ontology[(service_name, slot_name)]["possible_values"] = set(slot['possible_values'])
 
-for dialogue in orig_dialog:
-    for turn in dialogue["turns"]:
-        for frame in turn["frames"]:
-            service_name = frame["service"]
-            if "state" in frame:
-                for k, vs in frame["state"]["slot_values"].items():
-                    for v in vs:
-                        ontology[(service_name, k)]["possible_values"].add(v)
-            if "actions" in frame:
-                for action in frame["actions"]:
-                    k = action["slot"]
-                    for v in action["values"]:
-                        try:
+
+def get_ontology(orig_dialog, orig_schema):
+    ontology=defaultdict(defaultdict)
+    for schema in orig_schema:
+        service_name = schema['service_name']
+        for slot in schema['slots']:
+            slot_name = slot['name']
+            ontology[(service_name, slot_name)]["is_categorical"] = slot['is_categorical']
+            ontology[(service_name, slot_name)]["possible_values"] = set(slot['possible_values'])
+
+    for dialogue in orig_dialog:
+        for turn in dialogue["turns"]:
+            for frame in turn["frames"]:
+                service_name = frame["service"]
+                if "state" in frame:
+                    for k, vs in frame["state"]["slot_values"].items():
+                        for v in vs:
                             ontology[(service_name, k)]["possible_values"].add(v)
-                        except:
-                            continue
+                if "actions" in frame:
+                    for action in frame["actions"]:
+                        k = action["slot"]
+                        for v in action["values"]:
+                            try:
+                                ontology[(service_name, k)]["possible_values"].add(v)
+                            except:
+                                continue
+    return ontology
 
 
 
@@ -307,12 +323,10 @@ def replace(dialogue, turn_id, start_idx, end_idx, new_value):
         #     import ipdb; ipdb.set_trace()
 
 
-def digit2str(x):
-    x = x.split()
-    for i in range(len(x)):
-        if x[i].is_digit():
-            x[i] = num2words(x[i])
-    return " ".join(x)
+def digit2str(dialogue, turn_id, old_value, start_idx, end_idx):
+    if old_value.isdigit():
+        return num2words(old_value)
+    return None
 
 def validate(dialogue):
     # check slot spans match utterance and state value
@@ -329,8 +343,9 @@ def validate(dialogue):
                         found_key = False
                         for action in frame["actions"]:
                             if action["slot"] == key:
-                                found_key = True
-                                assert(word in action["values"])
+                                if word in action["values"]:
+                                    found_key=True
+                        
                         assert(found_key)
                     else:
                         if key in frame["state"]["slot_values"]:
@@ -376,18 +391,94 @@ def test(dialogues, dialogue_id, turn_id, old_value, new_value):
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=3, old_value="Mexican", new_value="MEXICANNN") # sys non-cat 
 # test(dialogues=orig_dialog, dialogue_id=0, turn_id=5, old_value="San Jose", new_value="MIAMIIIIIIIIIIIII") # user non-cat, San Jose
 
+
+def process_dialogues(final_dialogues, dialogue_count, dialogues, replace_turn_prob, replace_word_prob, new_val_func):
+    replace_success = 0
+    replace_failed = 0
+    for dialogue_id, dialogue in tqdm(enumerate(dialogues)):
+        d_id, d_count = dialogue["dialogue_id"].split("_")
+        d_id = int(d_id)
+        dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
+        dialogue_count[d_id]+=1 
+        for turn_id, turn in enumerate(dialogue["turns"]):
+            if random.random() < replace_turn_prob:
+                spans = get_sentence_components(turn=turn)
+                for span in reversed(spans):
+                    if random.random() < replace_word_prob:
+                        old_value = dialogue["turns"][turn_id]["utterance"][span[0]:span[1]]
+                        
+                        new_value = new_val_func(dialogue, turn_id, old_value, span[0], span[1])
+                        if new_value:
+                            # print(old_value)
+                            tmp_dialogue = copy.deepcopy(dialogue)
+                            try:
+                                replace(tmp_dialogue, turn_id, span[0], span[1], new_value)
+                                validate(tmp_dialogue)
+                                for k, v  in tmp_dialogue.items():
+                                    dialogue[k] = v
+                                replace_success += 1
+                            except:
+                                replace_failed += 1
+                                pass
+        for turn in dialogue["turns"]:
+            for frame in turn["frames"]:
+                if 'state_update' in frame:
+                    frame.pop("state_update")
+                if 'slot_to_span' in frame:
+                    frame.pop("slot_to_span")
+        final_dialogues[d_id].append(dialogue)
+    print(f"Replacement success {replace_success}, failed {replace_failed}\n")
+
+def change_numval_to_string(orig_dialog, orig_schema):
+    # change schema categorical values
+    iscategorical = defaultdict(bool)
+
+    for schema in orig_schema:
+        service_name = schema['service_name']
+        for slot in schema['slots']:
+            slot_name = slot['name']
+            iscategorical[(service_name, slot_name)] = slot['is_categorical']
+            for i, slot in enumerate(slot['possible_values']):
+                if slot.isdigit():
+                    slot['possible_values'][i] = num2words(slot)
+    
+    for dialogue in orig_dialog:
+        for turn in dialogue["turns"]:
+            for frame in turn["frames"]:
+                service = frame["service"]
+                if "state" in frame:
+                    for k, vs in frame["state"]["slot_values"].items():
+                        if iscategorical[(service, k)]:
+                            for v_id, v in enumerate(vs):
+                                if v.isdigit():
+                                    vs[v_id] = num2words(v)
+                if "actions" in frame:
+                    for action in frame["actions"]:
+                        k = action["slot"]
+                        if iscategorical[(service, k)]:
+                            for v_id, v in enumerate(action["values"]):
+                                if v.isdigit():
+                                    action["values"][v_id] = num2words(v)
+
+
+
+
+
 if __name__=="__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--concat_orig_dialogue", action="store_true")
-    parser.add_argument("--repeat", type=int, default=5)
-    parser.add_argument("--keep_untouched", type=float, default=0.5)
-    parser.add_argument("--replace_prob", type=float, default=0.5)
-    parser.add_argument("--seed", type=int, default=0)
-    args = parser.parse_args()
-    random.seed(args.seed)
+
 
     dialogue_count = defaultdict(int)
     final_dialogues = defaultdict(list)
+    if args.num2string:
+        # change_numval_to_string(orig_dialog, orig_schema)
+        if args.concat_orig_dialogue:
+            process_dialogues(final_dialogues=final_dialogues, dialogue_count=dialogue_count, dialogues=orig_dialog, replace_turn_prob=1.0, replace_word_prob=1.0, new_val_func=digit2str)
+        else:
+            process_dialogues(final_dialogues=defaultdict(list), dialogue_count=defaultdict(int), dialogues=orig_dialog, replace_turn_prob=1.0, replace_word_prob=1.0, new_val_func=digit2str)
+        
+
+    ontology = get_ontology(orig_dialog=orig_dialog, orig_schema=orig_schema)
+
     for dialogue_id, dialogue in tqdm(enumerate(orig_dialog)):
         try:
             validate(dialogue)
@@ -395,56 +486,26 @@ if __name__=="__main__":
             import ipdb; ipdb.set_trace()
         augment_dialog_by_auxiliary_entries(dialogue)
         validate(dialogue)
-        if args.concat_orig_dialogue:
+
+
+    
+    for _ in range(args.repeat):
+        dialogues = copy.deepcopy(orig_dialog)
+        process_dialogues(final_dialogues=final_dialogues, dialogue_count=dialogue_count, dialogues=dialogues, replace_turn_prob=args.replace_turn_prob, replace_word_prob=args.replace_word_prob, new_val_func=get_new_value)
+    
+    if args.concat_orig_dialogue and not args.num2string:
+        for dialogue_id, dialogue in tqdm(enumerate(orig_dialog)):
             d_id, d_count = dialogue["dialogue_id"].split("_")
             d_id = int(d_id)
             dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
             dialogue_count[d_id]+=1 
             final_dialogues[d_id].append(dialogue)
 
-    
-    for _ in range(args.repeat):
-        dialogues = copy.deepcopy(orig_dialog)
-        replace_success = 0
-        replace_failed = 0
-        for dialogue_id, dialogue in tqdm(enumerate(dialogues)):
-            d_id, d_count = dialogue["dialogue_id"].split("_")
-            d_id = int(d_id)
-            dialogue["dialogue_id"]=f"{d_id}_{dialogue_count[d_id]:05d}"
-            dialogue_count[d_id]+=1 
-            for turn_id, turn in enumerate(dialogue["turns"]):
-                if random.random() > args.keep_untouched:
-                    spans = get_sentence_components(turn=turn)
-                    for span in reversed(spans):
-                        if random.random() < args.replace_prob:
-                            old_value = dialogue["turns"][turn_id]["utterance"][span[0]:span[1]]
-                            new_value = get_new_value(dialogue, turn_id, old_value, span[0], span[1])
-                            if new_value:
-                                # print(old_value)
-                                tmp_dialogue = copy.deepcopy(dialogue)
-                                try:
-                                    replace(tmp_dialogue, turn_id, span[0], span[1], new_value)
-                                    validate(tmp_dialogue)
-                                    for k, v  in tmp_dialogue.items():
-                                        dialogue[k] = v
-                                    replace_success += 1
-                                except:
-                                    replace_failed += 1
-                                    pass
-            for turn in dialogue["turns"]:
-                for frame in turn["frames"]:
-                    if 'state_update' in frame:
-                        frame.pop("state_update")
-                    if 'slot_to_span' in frame:
-                        frame.pop("slot_to_span")
-            final_dialogues[d_id].append(dialogue)
-        print(f"Replacement success {replace_success}, failed {replace_failed}\n")
-    
-    output_dir = f"augmented_repeat{args.repeat}_keep_untouched{args.keep_untouched}_replace_prob{args.replace_prob}_concatorig{args.concat_orig_dialogue}"
+    output_dir = f"{args.dataset}_augmented_repeat{args.repeat}_replace_turn_prob{args.replace_turn_prob}_replace_word_prob{args.replace_word_prob}_concatorig{args.concat_orig_dialogue}_num2string{args.num2string}"
     os.makedirs(output_dir, exist_ok=True)
     for dir_id, dialogues in final_dialogues.items():
         with open(os.path.join(output_dir, f"dialogues_{dir_id:03d}.json"), 'w') as outfile:
-            json.dump(dialogues, outfile)
+            json.dump(dialogues, outfile, indent=2)
 
 
 
