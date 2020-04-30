@@ -20,6 +20,8 @@ from nemo.utils.lr_policies import get_lr_policy
 parser = argparse.ArgumentParser(description='Schema_guided_dst')
 
 # BERT based utterance encoder related arguments
+parser.add_argument("--exp_name", default="sgd_aug", type=str)
+parser.add_argument("--project", default="sgd_aug", type=str)
 
 parser.add_argument(
     "--max_seq_length",
@@ -375,6 +377,14 @@ prediction_dir = os.path.join(nf.work_dir, 'predictions', 'pred_res_{}_{}'.forma
 output_metric_file = os.path.join(nf.work_dir, 'metrics.txt')
 os.makedirs(prediction_dir, exist_ok=True)
 
+wand_callback = nemo.core.WandbCallback(
+    train_tensors=train_tensors,
+    wandb_name=args.exp_name,
+    wandb_project=args.project,
+    update_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
+    args=args,
+)
+
 eval_callback = nemo.core.EvaluatorCallback(
     eval_tensors=eval_tensors,
     user_iter_callback=lambda x, y: eval_iter_callback(x, y, schema_preprocessor, args.eval_dataset),
@@ -391,6 +401,8 @@ eval_callback = nemo.core.EvaluatorCallback(
     ),
     tb_writer=nf.tb_writer,
     eval_step=args.eval_epoch_freq * steps_per_epoch,
+    wandb_name=args.exp_name,
+    wandb_project=args.project,
 )
 
 ckpt_callback = nemo.core.CheckpointCallback(
@@ -404,7 +416,7 @@ lr_policy_fn = get_lr_policy(
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback, eval_callback, ckpt_callback],
+    callbacks=[train_callback, eval_callback, ckpt_callback, wand_callback],
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={

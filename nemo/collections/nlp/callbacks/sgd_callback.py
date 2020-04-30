@@ -181,4 +181,12 @@ def evaluate(prediction_dir, data_dir, eval_dataset, output_metric_file, schemas
     with open(os.path.join(prediction_dir, PER_FRAME_OUTPUT_FILENAME), "w") as f:
         json.dump(dataset_hyp, f, indent=2, separators=(",", ": "))
         f.close()
-    return all_metric_aggregate[ALL_SERVICES]
+    
+    all_metrics = {}
+    for k, v in all_metric_aggregate[SEEN_SERVICES].items():
+        all_metrics[f"seen_{k}"] = v
+    for k, v in all_metric_aggregate[UNSEEN_SERVICES].items():
+        all_metrics[f"unseen_{k}"] = v
+    for k, v in all_metric_aggregate[ALL_SERVICES].items():
+        all_metrics[f"all_{k}"] = v
+    return all_metrics
