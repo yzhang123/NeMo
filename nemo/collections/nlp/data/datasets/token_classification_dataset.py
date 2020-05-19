@@ -153,7 +153,15 @@ def get_features(
         logging.info("subtokens_mask: %s", " ".join(list(map(str, all_subtokens_mask[i]))))
         if with_label:
             logging.info("labels: %s", " ".join(list(map(str, all_labels[i]))))
-    return (all_input_ids, all_segment_ids, all_input_mask, all_loss_mask, all_subtokens_mask, all_labels)
+    return (
+        all_input_ids,
+        all_segment_ids,
+        all_input_mask,
+        all_loss_mask,
+        all_subtokens_mask,
+        all_labels,
+        all_subtokens,
+    )
 
 
 class BertTokenClassificationDataset(Dataset):
@@ -303,6 +311,7 @@ class BertTokenClassificationDataset(Dataset):
         self.all_loss_mask = features[3]
         self.all_subtokens_mask = features[4]
         self.all_labels = features[5]
+        self.all_subtokens = features[6]
         self.label_ids = label_ids
 
         infold = text_file[: text_file.rfind('/')]

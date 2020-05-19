@@ -108,6 +108,8 @@ if __name__ == "__main__":
         raise FileNotFoundError("{data_file} not found in {data_dir}")
 
     logging.info(f'Processing {args.data_file}')
+    if prefix == "devel":
+        prefix = "dev"
     out_text = os.path.join(data_dir, 'text_' + prefix + '.txt')
     out_labels = os.path.join(data_dir, 'labels_' + prefix + '.txt')
 

@@ -22,6 +22,8 @@ https://nvidia.github.io/NeMo/nlp/intro.html#named-entity-recognition
 import argparse
 import os
 
+import numpy as np
+
 import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.utils.data_utils
 from nemo import logging
@@ -30,6 +32,7 @@ from nemo.collections.nlp.callbacks.token_classification_callback import eval_ep
 from nemo.collections.nlp.data.datasets.datasets_utils.data_preprocessing import calc_class_weights
 from nemo.collections.nlp.nm.data_layers import BertTokenClassificationDataLayer
 from nemo.collections.nlp.nm.trainables import TokenClassifier
+from nemo.collections.nlp.utils.data_utils import get_vocab
 from nemo.utils.lr_policies import get_lr_policy
 
 # Parsing arguments
@@ -43,6 +46,9 @@ parser.add_argument(
     default='output',
     type=str,
     help="The output directory where the model prediction and checkpoints will be written.",
+)
+parser.add_argument(
+    "--checkpoint_dir", default=None, help="Directory with checkpoints",
 )
 parser.add_argument("--no_time_to_log_dir", action="store_true", help="whether to add time to work_dir or not")
 parser.add_argument("--num_gpus", default=1, type=int)
@@ -74,6 +80,7 @@ parser.add_argument("--optimizer_kind", default="adam", type=str)
 # task specific arguments
 parser.add_argument("--fc_dropout", default=0.5, type=float)
 parser.add_argument("--num_fc_layers", default=2, type=int)
+parser.add_argument("--num_classes", default=3, type=int)
 
 # data arguments
 parser.add_argument("--data_dir", default="/data", type=str)
@@ -81,7 +88,9 @@ parser.add_argument("--max_seq_length", default=128, type=int)
 parser.add_argument("--ignore_start_end", action='store_false')
 parser.add_argument("--ignore_extra_tokens", action='store_false')
 parser.add_argument("--none_label", default='O', type=str)
-parser.add_argument("--mode", default='train_eval', choices=["train_eval", "train"], type=str)
+parser.add_argument(
+    "--mode", default='train_eval', choices=["train_eval", "train_eval_test", "train", "test"], type=str
+)
 parser.add_argument("--no_shuffle_data", action='store_false', dest="shuffle_data")
 parser.add_argument("--use_cache", action='store_true', help="Whether to cache preprocessed data")
 parser.add_argument("--batch_size", default=8, type=int, help="Batch size")
@@ -96,6 +105,8 @@ parser.add_argument(
 parser.add_argument(
     "--vocab_file", default=None, help="Path to the vocab file. Required for pretrained Megatron models"
 )
+parser.add_argument("--label_ids", default=None, help="Path to label_ids created in training")
+
 parser.add_argument(
     "--tokenizer_model",
     default=None,
@@ -163,22 +174,7 @@ tokenizer = nemo.collections.nlp.data.tokenizers.get_tokenizer(
 )
 
 
-def create_pipeline(
-    pad_label=args.none_label,
-    max_seq_length=args.max_seq_length,
-    batch_size=args.batch_size,
-    num_gpus=args.num_gpus,
-    mode='train',
-    batches_per_step=args.batches_per_step,
-    label_ids=None,
-    ignore_extra_tokens=args.ignore_extra_tokens,
-    ignore_start_end=args.ignore_start_end,
-    use_cache=args.use_cache,
-    dropout=args.fc_dropout,
-    num_layers=args.num_fc_layers,
-    classifier=TokenClassifier,
-):
-
+def create_data_layer(mode, label_ids):
     logging.info(f"Loading {mode} data...")
     shuffle = args.shuffle_data if mode == 'train' else False
 
@@ -202,30 +198,32 @@ def create_pipeline(
         tokenizer=tokenizer,
         text_file=text_file,
         label_file=label_file,
-        pad_label=pad_label,
+        pad_label=args.none_label,
         label_ids=label_ids,
-        max_seq_length=max_seq_length,
-        batch_size=batch_size,
+        max_seq_length=args.max_seq_length,
+        batch_size=args.batch_size if mode == "train" else 1,
         shuffle=shuffle,
-        ignore_extra_tokens=ignore_extra_tokens,
-        ignore_start_end=ignore_start_end,
-        use_cache=use_cache,
+        ignore_extra_tokens=args.ignore_extra_tokens,
+        ignore_start_end=args.ignore_start_end,
+        use_cache=args.use_cache,
     )
+    return data_layer
 
+
+def create_pipeline(
+    mode='train', label_ids=None,
+):
+
+    data_layer = create_data_layer(mode=mode, label_ids=label_ids)
     (input_ids, input_type_ids, input_mask, loss_mask, subtokens_mask, labels) = data_layer()
 
     if mode == 'train':
-        label_ids = data_layer.dataset.label_ids
         class_weights = None
 
         if args.use_weighted_loss:
             logging.info(f"Using weighted loss")
             label_freqs = data_layer.dataset.label_frequencies
             class_weights = calc_class_weights(label_freqs)
-
-        classifier = classifier(
-            hidden_size=hidden_size, num_classes=len(label_ids), dropout=dropout, num_layers=num_layers
-        )
 
         task_loss = CrossEntropyLossNM(logits_ndim=3, weight=class_weights)
 
@@ -234,53 +232,94 @@ def create_pipeline(
 
     if mode == 'train':
         loss = task_loss(logits=logits, labels=labels, loss_mask=loss_mask)
-        steps_per_epoch = len(data_layer) // (batch_size * num_gpus * batches_per_step)
-        tensors_to_evaluate = [loss, logits]
-        return tensors_to_evaluate, loss, steps_per_epoch, label_ids, classifier
-    else:
+        steps_per_epoch = len(data_layer) // (args.batch_size * args.num_gpus * args.batches_per_step)
+        tensors_to_evaluate = [loss]
+        return tensors_to_evaluate, loss, steps_per_epoch, data_layer
+    elif mode == 'dev':
         tensors_to_evaluate = [logits, labels, subtokens_mask]
+        return tensors_to_evaluate, data_layer
+    elif mode == 'test':
+        tensors_to_evaluate = [logits, input_mask]
         return tensors_to_evaluate, data_layer
 
 
 callbacks = []
-train_tensors, train_loss, steps_per_epoch, label_ids, classifier = create_pipeline()
-logging.info(f"steps_per_epoch = {steps_per_epoch}")
-# Create trainer and execute training action
-train_callback = nemo.core.SimpleLossLoggerCallback(
-    tensors=train_tensors,
-    print_func=lambda x: logging.info("Loss: {:.3f}".format(x[0].item())),
-    get_tb_values=lambda x: [["loss", x[0]]],
-    step_freq=args.loss_step_freq,
-    tb_writer=nf.tb_writer,
+classifier = TokenClassifier(
+    hidden_size=hidden_size, num_classes=args.num_classes, dropout=args.fc_dropout, num_layers=args.num_fc_layers
 )
-callbacks.append(train_callback)
 
-
-if "eval" in args.mode:
-    eval_tensors, data_layer = create_pipeline(mode='dev', label_ids=label_ids, classifier=classifier)
-    eval_callback = nemo.core.EvaluatorCallback(
-        eval_tensors=eval_tensors,
-        user_iter_callback=lambda x, y: eval_iter_callback(x, y),
-        user_epochs_done_callback=lambda x: eval_epochs_done_callback(x, label_ids, f'{nf.work_dir}/graphs'),
+if "train" in args.mode:
+    train_tensors, train_loss, steps_per_epoch, train_data_layer = create_pipeline(mode="train", label_ids=None)
+    assert len(train_data_layer.dataset.label_ids) == args.num_classes
+    logging.info(f"steps_per_epoch = {steps_per_epoch}")
+    # Create trainer and execute training action
+    train_callback = nemo.core.SimpleLossLoggerCallback(
+        tensors=train_tensors,
+        print_func=lambda x: logging.info("Loss: {:.3f}".format(x[0].item())),
+        get_tb_values=lambda x: [["loss", x[0]]],
+        step_freq=args.loss_step_freq,
         tb_writer=nf.tb_writer,
-        eval_step=args.eval_step_freq,
     )
-    callbacks.append(eval_callback)
+    callbacks.append(train_callback)
+    ckpt_callback = nemo.core.CheckpointCallback(
+        folder=nf.checkpoint_dir, epoch_freq=args.save_epoch_freq, step_freq=args.save_step_freq
+    )
+    callbacks.append(ckpt_callback)
 
-ckpt_callback = nemo.core.CheckpointCallback(
-    folder=nf.checkpoint_dir, epoch_freq=args.save_epoch_freq, step_freq=args.save_step_freq
-)
-callbacks.append(ckpt_callback)
+    if "eval" in args.mode:
+        labels = open(os.path.join(args.data_dir, 'label_ids.csv')).read().split()
+        assert len(labels) == args.num_classes
+        label_ids = dict(zip(labels, range(args.num_classes)))
+        eval_tensors, eval_data_layer = create_pipeline(mode='dev', label_ids=label_ids)
+        eval_callback = nemo.core.EvaluatorCallback(
+            eval_tensors=eval_tensors,
+            user_iter_callback=lambda x, y: eval_iter_callback(x, y),
+            user_epochs_done_callback=lambda x: eval_epochs_done_callback(
+                x, eval_data_layer.dataset.label_ids, f'{nf.work_dir}/graphs'
+            ),
+            tb_writer=nf.tb_writer,
+            eval_step=args.eval_step_freq,
+        )
+        callbacks.append(eval_callback)
 
-lr_policy_fn = get_lr_policy(
-    args.lr_policy, total_steps=args.num_epochs * steps_per_epoch, warmup_ratio=args.lr_warmup_proportion
-)
+if "test" in args.mode:
+    labels = open(os.path.join(args.data_dir, 'label_ids.csv')).read().split()
+    assert len(labels) == args.num_classes
+    label_ids = dict(zip(labels, range(args.num_classes)))
+    test_tensors, test_data_layer = create_pipeline(mode='test', label_ids=label_ids)
 
-nf.train(
-    tensors_to_optimize=[train_loss],
-    callbacks=callbacks,
-    lr_policy=lr_policy_fn,
-    batches_per_step=args.batches_per_step,
-    optimizer=args.optimizer_kind,
-    optimization_params={"num_epochs": args.num_epochs, "lr": args.lr, "weight_decay": args.weight_decay},
-)
+
+if "train" in args.mode:
+    lr_policy_fn = get_lr_policy(
+        args.lr_policy, total_steps=args.num_epochs * steps_per_epoch, warmup_ratio=args.lr_warmup_proportion
+    )
+    nf.train(
+        tensors_to_optimize=[train_loss],
+        callbacks=callbacks,
+        lr_policy=lr_policy_fn,
+        batches_per_step=args.batches_per_step,
+        optimizer=args.optimizer_kind,
+        optimization_params={"num_epochs": args.num_epochs, "lr": args.lr, "weight_decay": args.weight_decay},
+    )
+if "test" in args.mode:
+    labels_dict = get_vocab(os.path.join(args.data_dir, 'label_ids.csv'))
+    path = os.path.join(nf.work_dir, "token_" + args.mode + ".txt")
+    wf = open(path, 'w')
+    for tokens in test_data_layer.dataset.all_subtokens:
+        for token in tokens:
+            wf.write(token + '\n')
+    wf.close()
+    test_tensors = nf.infer(
+        tensors=[test_tensors[0], test_tensors[-1]],
+        checkpoint_dir=nf.checkpoint_dir if "train" in args.mode else args.checkpoint_dir,
+    )
+
+    def concatenate(lists):
+        return np.concatenate([t.cpu() for t in lists])
+
+    logits, input_mask = [concatenate(tensors) for tensors in test_tensors]
+    preds = np.argmax(logits[np.asarray(input_mask, dtype=bool)], axis=-1).flatten()
+    path = os.path.join(nf.work_dir, "labels_" + args.mode + ".txt")
+    with open(path, 'w') as wf:
+        for pred in preds:
+            wf.write(labels_dict[pred] + '\n')

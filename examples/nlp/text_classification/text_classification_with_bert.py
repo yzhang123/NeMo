@@ -161,10 +161,11 @@ def create_pipeline(num_samples=-1, batch_size=32, num_gpus=1, mode='train', is_
     hidden_states = model(input_ids=ids, token_type_ids=type_ids, attention_mask=input_mask)
 
     logits = classifier(hidden_states=hidden_states)
-    loss = loss_fn(logits=logits, labels=labels)
+    loss = None
 
     if is_training:
-        tensors_to_evaluate = [loss, logits]
+        tensors_to_evaluate = [loss]
+        loss = loss_fn(logits=logits, labels=labels)
     else:
         tensors_to_evaluate = [logits, labels]
 
