@@ -185,13 +185,15 @@ class SGDDecoderNM(TrainableNM):
             "logit_noncat_slot_end": NeuralType(('B', 'T', 'C'), LogitsType()),
         }
 
-    def __init__(self, embedding_dim, schema_emb_processor, add_attention_head=False):
+
+    def __init__(self, embedding_dim, schema_emb_processor, add_attention_head=False, attention_schema=False, **kwargs):
         """Get logits for elements by conditioning on utterance embedding.
 
         Args:
             embedding_dim (int): hidden size of the BERT
             schema_emb_processor (obj): contains schema embeddings for services and config file
             head_transform (str): transformation to use for computing head
+            attention_schema (bool): use attention on schema
         """
         super().__init__()
 

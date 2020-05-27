@@ -225,7 +225,10 @@ parser.add_argument(
 parser.add_argument(
     "--add_attention_head",
     action="store_true",
-    help="Whether to use attention when computing projections. When False, uses linear projection.",
+    help="Whether to use attention when computing projections. When False, uses linear projection."
+)
+parser.add_argument(
+    "--attention_schema", action="store_true", help="Specifies whether schema embeddings are trainables."
 )
 parser.add_argument(
     "--debug_mode", action="store_true", help="Enables debug mode with more info on data preprocessing and evaluation",
@@ -237,6 +240,8 @@ parser.add_argument(
 
 args = parser.parse_args()
 logging.info(args)
+if args.attention_schema:
+    args.schema_emb_init = "all"
 
 if args.debug_mode:
     logging.setLevel("DEBUG")
@@ -316,7 +321,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
 # define model pipeline
 sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
 sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head
+    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head, attention_schema=args.attention_schema
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 

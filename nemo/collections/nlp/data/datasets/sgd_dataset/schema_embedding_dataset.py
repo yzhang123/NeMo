@@ -291,11 +291,14 @@ class SchemaEmbeddingDataset(Dataset):
             elif mode == 'baseline':
                 # Obtain the encoding of the [CLS] token.
                 embedding = [round(float(x), 6) for x in hidden_states[0][idx, 0, :].flat]
+            elif mode == 'all' and tensor_name in ['cat_slot_emb', 'noncat_slot_emb', 'cat_slot_value_emb']:
+                embedding = [round(float(x), 6) for x in hidden_states[0][idx, :, :].flat]
+            elif mode == 'all':
+                embedding = [round(float(x), 6) for x in hidden_states[0][idx, 0, :].flat]
             else:
                 raise ValueError(f'Mode {mode} for generation schema embeddings is not supported')
             intent_or_slot_id = self.features['intent_or_slot_id'][idx]
             value_id = self.features['value_id'][idx]
-
             if tensor_name == "cat_slot_value_emb":
                 emb_mat[intent_or_slot_id, value_id] = embedding
             else:
@@ -311,16 +314,29 @@ class SchemaEmbeddingDataset(Dataset):
         max_num_value = self.schema_config["MAX_NUM_VALUE_PER_CAT_SLOT"]
         embedding_dim = self.schema_config["EMBEDDING_DIMENSION"]
 
-        for _ in self.schemas.services:
-            schema_embeddings.append(
-                {
-                    "intent_emb": np.zeros([max_num_intent, embedding_dim]),
-                    "req_slot_emb": np.zeros([max_num_slot, embedding_dim]),
-                    "cat_slot_emb": np.zeros([max_num_cat_slot, embedding_dim]),
-                    "noncat_slot_emb": np.zeros([max_num_noncat_slot, embedding_dim]),
-                    "cat_slot_value_emb": np.zeros([max_num_cat_slot, max_num_value, embedding_dim]),
-                }
-            )
+        if mode == "all":
+            seq_len = bert_hidden_states[0].shape[1]
+            for _ in self.schemas.services:
+                schema_embeddings.append(
+                    {
+                        "intent_emb": np.zeros([max_num_intent, embedding_dim]),
+                        "req_slot_emb": np.zeros([max_num_slot, embedding_dim]),
+                        "cat_slot_emb": np.zeros([max_num_cat_slot, seq_len * embedding_dim]),
+                        "noncat_slot_emb": np.zeros([max_num_noncat_slot, seq_len * embedding_dim]),
+                        "cat_slot_value_emb": np.zeros([max_num_cat_slot, max_num_value, seq_len * embedding_dim]),
+                    }
+                )
+        else:
+            for _ in self.schemas.services:
+                schema_embeddings.append(
+                    {
+                        "intent_emb": np.zeros([max_num_intent, embedding_dim]),
+                        "req_slot_emb": np.zeros([max_num_slot, embedding_dim]),
+                        "cat_slot_emb": np.zeros([max_num_cat_slot, embedding_dim]),
+                        "noncat_slot_emb": np.zeros([max_num_noncat_slot, embedding_dim]),
+                        "cat_slot_value_emb": np.zeros([max_num_cat_slot, max_num_value, embedding_dim]),
+                    }
+                )
 
         # Populate the embeddings based on bert inference results and save them.
         self._populate_schema_embeddings(schema_embeddings, bert_hidden_states, mode)
