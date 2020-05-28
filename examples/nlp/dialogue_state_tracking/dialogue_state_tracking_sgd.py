@@ -24,6 +24,7 @@ import argparse
 import math
 import os
 
+import nemo
 import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.data.datasets.sgd_dataset.data_processor as data_processor
 from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callback, eval_iter_callback
@@ -193,7 +194,8 @@ parser.add_argument(
 parser.add_argument(
     "--eval_epoch_freq", default=1, type=int, help="Frequency of evaluation",
 )
-
+parser.add_argument("--exp_name", default="sgd_aug", type=str)
+parser.add_argument("--project", default="sgd_aug", type=str)
 parser.add_argument(
     "--num_workers",
     default=2,
@@ -420,6 +422,13 @@ train_callback = SimpleLossLoggerCallback(
     step_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
 )
 
+wand_callback = nemo.core.WandbCallback(
+    train_tensors=train_tensors,
+    wandb_name=args.exp_name,
+    wandb_project=args.project,
+    update_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
+    args=args,
+)
 
 def get_eval_callback(eval_dataset):
     _, eval_tensors = create_pipeline(dataset_split=eval_dataset)
@@ -441,6 +450,8 @@ def get_eval_callback(eval_dataset):
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,
+        wandb_name=args.exp_name,
+        wandb_project=args.project,
     )
     return eval_callback
 
@@ -460,7 +471,7 @@ lr_policy_fn = get_lr_policy(
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback, ckpt_callback] + eval_callbacks,
+    callbacks=[train_callback, ckpt_callback, wand_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={
