@@ -34,6 +34,108 @@ from nemo.utils.decorators import add_port_docs
 __all__ = ['SGDDecoderNM']
 
 
+class SchemaMultiAttention(nn.Module):
+    def __init__(self, embedding_dim):
+        """Get logits for elements by using attention on token embedding.
+        Args:
+          embedding_dim (int): hidden size of the BERT
+    
+        Returns:
+          A tensor of shape (batch_size, num_elements, num_classes) containing the logits.
+        """
+        super().__init__()
+        self.num_attention_heads = 16
+        self.attention_head_size = embedding_dim // self.num_attention_heads
+        self.embedding_dim = embedding_dim
+        self.dropout = nn.Dropout(0.1)
+
+        self.key = nn.Linear(embedding_dim, embedding_dim)
+        self.query = nn.Linear(embedding_dim, embedding_dim)
+        self.value = nn.Linear(embedding_dim, embedding_dim)
+
+    def transpose_for_scores(self, x):
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(*new_x_shape)
+        return x.permute(0, 1, 3, 2, 4)
+    def forward(self, encoded_utterance, token_embeddings, element_embeddings):
+        """
+        token_embeddings - token hidden states from BERT encoding of the utterance (batch_size, seq_len, embedding_dim)
+        encoded_utterance - [CLS] token hidden state from BERT encoding of the utterance (batch_size, embedding_dim)
+        element_embeddings: A tensor of shape (batch_size, num_elements, seq_len, embedding_dim).
+        """
+        _, num_elements, seq_len, _ = element_embeddings.size()
+        token_embeddings = token_embeddings.unsqueeze(1)
+        query_layer = self.query(token_embeddings)
+        key_layer = self.key(element_embeddings)
+        value_layer = self.value(element_embeddings)
+
+        query_layer = self.transpose_for_scores(query_layer)
+        key_layer = self.transpose_for_scores(key_layer)
+        value_layer = self.transpose_for_scores(value_layer)
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+        attention_probs = nn.Softmax(dim=-1)(attention_scores)
+        attention_probs = self.dropout(attention_probs)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 1, 3, 2, 4).contiguous()
+        new_context_layer_shape = context_layer.shape[:-2] + (self.embedding_dim,)
+        context_layer = context_layer.view(*new_context_layer_shape).squeeze()
+        return context_layer
+
+
+
+class SchemaAttention(nn.Module):
+    def __init__(self, num_classes, embedding_dim):
+        """Get logits for elements by using attention on token embedding.
+        Args:
+          num_classes (int): An int containing the number of classes for which logits are to be generated.
+          embedding_dim (int): hidden size of the BERT
+    
+        Returns:
+          A tensor of shape (batch_size, num_elements, num_classes) containing the logits.
+        """
+        super().__init__()
+        self.num_attention_heads = 16
+        self.attention_head_size = embedding_dim // self.num_attention_heads
+        self.embedding_dim = embedding_dim
+        self.num_classes = num_classes
+        self.dropout = nn.Dropout(0.1)
+
+        self.key = nn.Linear(embedding_dim, embedding_dim)
+        self.query = nn.Linear(embedding_dim, embedding_dim)
+        self.value = nn.Linear(embedding_dim, embedding_dim)
+        self.layer = nn.Linear(embedding_dim, num_classes)
+
+    def transpose_for_scores(self, x):
+        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+        x = x.view(*new_x_shape)
+        return x.permute(0, 1, 3, 2, 4)
+    def forward(self, encoded_utterance, token_embeddings, element_embeddings):
+        """
+        token_embeddings - token hidden states from BERT encoding of the utterance (batch_size, seq_len, embedding_dim)
+        encoded_utterance - [CLS] token hidden state from BERT encoding of the utterance (batch_size, embedding_dim)
+        element_embeddings: A tensor of shape (batch_size, num_elements, seq_len, embedding_dim).
+        """
+        _, num_elements, seq_len, _ = element_embeddings.size()
+        encoded_utterance = encoded_utterance.unsqueeze(1).unsqueeze(1)
+        query_layer = self.query(encoded_utterance)
+        key_layer = self.key(element_embeddings)
+        value_layer = self.value(element_embeddings)
+
+        query_layer = self.transpose_for_scores(query_layer)
+        key_layer = self.transpose_for_scores(key_layer)
+        value_layer = self.transpose_for_scores(value_layer)
+        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+        attention_probs = nn.Softmax(dim=-1)(attention_scores)
+        attention_probs = self.dropout(attention_probs)
+        context_layer = torch.matmul(attention_probs, value_layer)
+        context_layer = context_layer.permute(0, 1, 3, 2, 4).contiguous()
+        new_context_layer_shape = context_layer.shape[:-2] + (self.embedding_dim,)
+        context_layer = context_layer.view(*new_context_layer_shape).squeeze()
+        logits = self.layer(context_layer)
+        return logits
+
 class LogitsAttention(nn.Module):
     def __init__(self, num_classes, embedding_dim):
         """Get logits for elements by using attention on token embedding.
@@ -198,6 +300,7 @@ class SGDDecoderNM(TrainableNM):
         super().__init__()
 
         # Add a trainable vector for the NONE intent
+        self.attention_schema = attention_schema
         self.none_intent_vector = torch.empty((1, 1, embedding_dim), requires_grad=True).to(self._device)
         # TODO truncated norm init
         nn.init.normal_(self.none_intent_vector, std=0.02)
@@ -207,9 +310,11 @@ class SGDDecoderNM(TrainableNM):
             projection_module = LogitsAttention
         else:
             projection_module = Logits
+        if attention_schema:
+            projection_module = SchemaMultiAttention
 
-        self.intent_layer = projection_module(1, embedding_dim).to(self._device)
-        self.requested_slots_layer = projection_module(1, embedding_dim).to(self._device)
+        self.intent_layer = Logits(1, embedding_dim).to(self._device)
+        self.requested_slots_layer = Logits(1, embedding_dim).to(self._device)
 
         self.cat_slot_value_layer = projection_module(1, embedding_dim).to(self._device)
 
@@ -218,18 +323,24 @@ class SGDDecoderNM(TrainableNM):
         self.noncat_slot_layer = projection_module(3, embedding_dim).to(self._device)
 
         # dim 2 for non_categorical slot - to represent start and end position
-        self.noncat_layer1 = nn.Linear(2 * embedding_dim, embedding_dim).to(self._device)
+        if attention_schema:
+            self.noncat_layer1 = SchemaMultiAttention(embedding_dim).to(self._device)
+        else:
+            self.noncat_layer1 = nn.Linear(2 * embedding_dim, embedding_dim).to(self._device)
         self.noncat_activation = F.gelu
         self.noncat_layer2 = nn.Linear(embedding_dim, 2).to(self._device)
 
         config = schema_emb_processor.schema_config
         num_services = len(schema_emb_processor.schemas.services)
         self.intents_emb = nn.Embedding(num_services, config["MAX_NUM_INTENT"] * embedding_dim)
-        self.cat_slot_emb = nn.Embedding(num_services, config["MAX_NUM_CAT_SLOT"] * embedding_dim)
+        seq_len = 1 
+        if attention_schema:
+            seq_len = kwargs['seq_len']
+        self.cat_slot_emb = nn.Embedding(num_services, config["MAX_NUM_CAT_SLOT"] * seq_len * embedding_dim)
         self.cat_slot_value_emb = nn.Embedding(
-            num_services, config["MAX_NUM_CAT_SLOT"] * config["MAX_NUM_VALUE_PER_CAT_SLOT"] * embedding_dim
+            num_services, config["MAX_NUM_CAT_SLOT"] * config["MAX_NUM_VALUE_PER_CAT_SLOT"] * seq_len * embedding_dim
         )
-        self.noncat_slot_emb = nn.Embedding(num_services, config["MAX_NUM_NONCAT_SLOT"] * embedding_dim)
+        self.noncat_slot_emb = nn.Embedding(num_services, config["MAX_NUM_NONCAT_SLOT"] * seq_len * embedding_dim)
         self.req_slot_emb = nn.Embedding(
             num_services, (config["MAX_NUM_CAT_SLOT"] + config["MAX_NUM_NONCAT_SLOT"]) * embedding_dim
         )
@@ -239,12 +350,15 @@ class SGDDecoderNM(TrainableNM):
         self.intents_emb.weight.data.copy_(
             torch.from_numpy(np.stack(schema_embeddings['intent_emb']).reshape(num_services, -1))
         )
+
         self.cat_slot_emb.weight.data.copy_(
             torch.from_numpy(np.stack(schema_embeddings['cat_slot_emb']).reshape(num_services, -1))
         )
+                
         self.cat_slot_value_emb.weight.data.copy_(
             torch.from_numpy(np.stack(schema_embeddings['cat_slot_value_emb']).reshape(num_services, -1))
         )
+
         self.noncat_slot_emb.weight.data.copy_(
             torch.from_numpy(np.stack(schema_embeddings['noncat_slot_emb']).reshape(num_services, -1))
         )
@@ -270,12 +384,22 @@ class SGDDecoderNM(TrainableNM):
         service_ids,
         intent_status_mask,
     ):
-        batch_size, emb_dim = encoded_utterance.size()
+        batch_size, seq_len, emb_dim = token_embeddings.size()
+        
         intent_embeddings = self.intents_emb(service_ids).view(batch_size, -1, emb_dim)
-        cat_slot_emb = self.cat_slot_emb(service_ids).view(batch_size, -1, emb_dim)
+        if self.attention_schema:
+            cat_slot_emb = self.cat_slot_emb(service_ids).view(batch_size, -1, seq_len, emb_dim)
+        else:
+            cat_slot_emb = self.cat_slot_emb(service_ids).view(batch_size, -1, emb_dim)
         max_number_cat_slots = cat_slot_emb.shape[1]
-        cat_slot_value_emb = self.cat_slot_value_emb(service_ids).view(batch_size, max_number_cat_slots, -1, emb_dim)
-        noncat_slot_emb = self.noncat_slot_emb(service_ids).view(batch_size, -1, emb_dim)
+        if self.attention_schema:
+            cat_slot_value_emb = self.cat_slot_value_emb(service_ids).view(batch_size, max_number_cat_slots, -1, seq_len, emb_dim)
+        else:
+            cat_slot_value_emb = self.cat_slot_value_emb(service_ids).view(batch_size, max_number_cat_slots, -1, emb_dim)
+        if self.attention_schema:
+            noncat_slot_emb = self.noncat_slot_emb(service_ids).view(batch_size, -1, seq_len, emb_dim)
+        else:
+            noncat_slot_emb = self.noncat_slot_emb(service_ids).view(batch_size, -1, emb_dim)
         req_slot_emb = self.req_slot_emb(service_ids).view(batch_size, -1, emb_dim)
 
         logit_intent_status = self._get_intents(
@@ -285,7 +409,6 @@ class SGDDecoderNM(TrainableNM):
         logit_req_slot_status = self._get_requested_slots(
             encoded_utterance, req_slot_emb, token_embeddings, utterance_mask
         )
-
         logit_cat_slot_status, logit_cat_slot_value = self._get_categorical_slot_goals(
             encoded_utterance, cat_slot_emb, cat_slot_value_emb, cat_slot_values_mask, token_embeddings, utterance_mask
         )
@@ -369,8 +492,12 @@ class SGDDecoderNM(TrainableNM):
 
         # Predict the goal value.
         # Shape: (batch_size, max_categorical_slots, max_categorical_values, embedding_dim).
-        _, max_num_slots, max_num_values, embedding_dim = cat_slot_value_emb.size()
-        cat_slot_value_emb_reshaped = cat_slot_value_emb.view(-1, max_num_slots * max_num_values, embedding_dim)
+        if cat_slot_emb.ndim == 3 and cat_slot_value_emb.ndim == 4:
+            _, max_num_slots, max_num_values, embedding_dim = cat_slot_value_emb.size()
+            cat_slot_value_emb_reshaped = cat_slot_value_emb.view(-1, max_num_slots * max_num_values, embedding_dim)
+        elif cat_slot_emb.ndim == 4 and cat_slot_value_emb.ndim == 5:
+            _, max_num_slots, max_num_values, seq_len, embedding_dim = cat_slot_value_emb.size()
+            cat_slot_value_emb_reshaped = cat_slot_value_emb.view(-1, max_num_slots * max_num_values, seq_len, embedding_dim)
 
         value_logits = self.cat_slot_value_layer(
             encoded_utterance=encoded_utterance,
@@ -404,15 +531,18 @@ class SGDDecoderNM(TrainableNM):
         # Predict the distribution for span indices.
         max_num_tokens = token_embeddings.size()[1]
 
-        repeated_token_embeddings = token_embeddings.unsqueeze(1).repeat(1, max_num_slots, 1, 1)
-        repeated_slot_embeddings = noncat_slot_emb.unsqueeze(2).repeat(1, 1, max_num_tokens, 1)
+        if not self.attention_schema:
+            repeated_token_embeddings = token_embeddings.unsqueeze(1).repeat(1, max_num_slots, 1, 1)
+            repeated_slot_embeddings = noncat_slot_emb.unsqueeze(2).repeat(1, 1, max_num_tokens, 1)
 
-        # Shape: (batch_size, max_num_slots, max_num_tokens, 2 * embedding_dim).
-        slot_token_embeddings = torch.cat([repeated_slot_embeddings, repeated_token_embeddings], axis=3)
+            # Shape: (batch_size, max_num_slots, max_num_tokens, 2 * embedding_dim).
+            slot_token_embeddings = torch.cat([repeated_slot_embeddings, repeated_token_embeddings], axis=3)
 
-        # Project the combined embeddings to obtain logits, Shape: (batch_size, max_num_slots, max_num_tokens, 2)
-        span_logits = self.noncat_layer1(slot_token_embeddings)
-        span_logits = self.noncat_activation(span_logits)
+            # Project the combined embeddings to obtain logits, Shape: (batch_size, max_num_slots, max_num_tokens, 2)
+            span_logits = self.noncat_layer1(slot_token_embeddings)
+            span_logits = self.noncat_activation(span_logits)
+        else:
+            span_logits = self.noncat_layer1(token_embeddings=token_embeddings, element_embeddings=noncat_slot_emb, encoded_utterance=encoded_utterance)
         span_logits = self.noncat_layer2(span_logits)
 
         # Mask out invalid logits for padded tokens.

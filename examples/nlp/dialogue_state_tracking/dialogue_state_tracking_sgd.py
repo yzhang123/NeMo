@@ -320,8 +320,11 @@ dialogues_processor = data_processor.SGDDataProcessor(
 
 # define model pipeline
 sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
+decoder_kwargs = {}
+if args.attention_schema:
+    decoder_kwargs['seq_len'] = args.max_seq_length
 sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head, attention_schema=args.attention_schema
+    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head, attention_schema=args.attention_schema, **decoder_kwargs
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
