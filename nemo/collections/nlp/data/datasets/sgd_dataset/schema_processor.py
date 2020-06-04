@@ -27,6 +27,7 @@ import numpy as np
 import torch
 
 from nemo import logging
+from nemo.backends.pytorch.common import MaskoutNM
 from nemo.collections.nlp.data.datasets.sgd_dataset import schema
 from nemo.collections.nlp.data.datasets.sgd_dataset.schema_embedding_dataset import SchemaEmbeddingDataset
 from nemo.collections.nlp.nm.data_layers.bert_inference_datalayer import BertInferDataLayer
@@ -120,12 +121,13 @@ class SchemaPreprocessor:
             emb_datalayer = BertInferDataLayer(
                 dataset_type=SchemaEmbeddingDataset, dataset_params=dataset_params, batch_size=1, shuffle=False,
             )
+            maskout = MaskoutNM()
 
             input_ids, input_mask, input_type_ids = emb_datalayer()
 
             hidden_states = bert_model(input_ids=input_ids, token_type_ids=input_type_ids, attention_mask=input_mask)
+            hidden_states = maskout(hidden_states=hidden_states, attention_mask=input_mask)
             evaluated_tensors = nf.infer(tensors=[hidden_states], checkpoint_dir=bert_ckpt_dir)
-
             master_device = not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
             if master_device:
                 hidden_states = [concatenate(tensors) for tensors in evaluated_tensors]

@@ -227,7 +227,7 @@ parser.add_argument(
 parser.add_argument(
     "--add_attention_head",
     action="store_true",
-    help="Whether to use attention when computing projections. When False, uses linear projection."
+    help="Whether to use attention when computing projections. When False, uses linear projection.",
 )
 parser.add_argument(
     "--attention_schema", action="store_true", help="Specifies whether schema embeddings are trainables."
@@ -326,7 +326,11 @@ decoder_kwargs = {}
 if args.attention_schema:
     decoder_kwargs['seq_len'] = args.max_seq_length
 sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head, attention_schema=args.attention_schema, **decoder_kwargs
+    embedding_dim=hidden_size,
+    schema_emb_processor=schema_preprocessor,
+    add_attention_head=args.add_attention_head,
+    attention_schema=args.attention_schema,
+    **decoder_kwargs,
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
@@ -429,6 +433,7 @@ wand_callback = nemo.core.WandbCallback(
     update_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
     args=args,
 )
+
 
 def get_eval_callback(eval_dataset):
     _, eval_tensors = create_pipeline(dataset_split=eval_dataset)

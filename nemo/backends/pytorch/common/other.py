@@ -1,9 +1,6 @@
 # Copyright (c) 2019 NVIDIA Corporation
 """Core PyTorch-base Neural Modules"""
-__all__ = [
-    'SequenceEmbedding',
-    'ZerosLikeNM',
-]
+__all__ = ['SequenceEmbedding', 'ZerosLikeNM', 'MaskoutNM']
 
 from typing import Dict, Iterable, Mapping, Optional, Set
 
@@ -67,3 +64,28 @@ class ZerosLikeNM(NonTrainableNM):
 
     def forward(self, input_type_ids):
         return torch.zeros_like(input_type_ids).long()
+
+
+class MaskoutNM(NonTrainableNM):
+    @property
+    def input_ports(self):
+        """Returns definitions of module input ports.
+        """
+        return {
+            "hidden_states": NeuralType(('B', 'T', 'D'), ChannelType()),
+            "attention_mask": NeuralType(('B', 'T'), ChannelType()),
+        }
+
+    @property
+    def output_ports(self):
+        """Returns definitions of module output ports.
+        """
+        return {"hidden_states": NeuralType(('B', 'T', 'D'), ChannelType())}
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, hidden_states, attention_mask):
+        if len(attention_mask.shape) == len(hidden_states.shape) - 1:
+            attention_mask = attention_mask.unsqueeze(-1).to(bool)
+        return hidden_states.masked_fill(attention_mask != True, 0)
