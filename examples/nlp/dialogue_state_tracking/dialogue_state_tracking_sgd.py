@@ -257,10 +257,10 @@ if args.task_name == "multiwoz":
     }
 else:
     schema_config = {
-        "MAX_NUM_CAT_SLOT": 6,
-        "MAX_NUM_NONCAT_SLOT": 12,
-        "MAX_NUM_VALUE_PER_CAT_SLOT": 12,
-        "MAX_NUM_INTENT": 4,
+        "MAX_NUM_CAT_SLOT": 4,
+        "MAX_NUM_NONCAT_SLOT": 8,
+        "MAX_NUM_VALUE_PER_CAT_SLOT": 6,
+        "MAX_NUM_INTENT": 2,
     }
 
 if not os.path.exists(args.data_dir):
