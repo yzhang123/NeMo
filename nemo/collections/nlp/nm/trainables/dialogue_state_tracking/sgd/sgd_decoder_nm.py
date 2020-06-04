@@ -348,7 +348,7 @@ class SGDDecoderNM(TrainableNM):
             self.noncat_layer1 = SchemaMultiAttention(embedding_dim).to(self._device)
         else:
             self.noncat_layer1 = nn.Linear(2 * embedding_dim, embedding_dim).to(self._device)
-        self.noncat_activation = F.gelu
+            self.noncat_activation = F.gelu
         self.noncat_layer2 = nn.Linear(embedding_dim, 2).to(self._device)
 
         config = schema_emb_processor.schema_config
@@ -426,7 +426,6 @@ class SGDDecoderNM(TrainableNM):
         else:
             noncat_slot_emb = self.noncat_slot_emb(service_ids).view(batch_size, -1, emb_dim)
         req_slot_emb = self.req_slot_emb(service_ids).view(batch_size, -1, emb_dim)
-
         logit_intent_status = self._get_intents(
             encoded_utterance, intent_embeddings, intent_status_mask, token_embeddings, utterance_mask
         )
