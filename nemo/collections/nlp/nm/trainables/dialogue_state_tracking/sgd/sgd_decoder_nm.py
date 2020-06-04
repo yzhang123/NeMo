@@ -344,7 +344,7 @@ class SGDDecoderNM(TrainableNM):
         self.noncat_slot_layer = projection_module(3, embedding_dim).to(self._device)
 
         # dim 2 for non_categorical slot - to represent start and end position
-        if attention_schema:
+        if False:
             self.noncat_layer1 = SchemaMultiAttention(embedding_dim).to(self._device)
         else:
             self.noncat_layer1 = nn.Linear(2 * embedding_dim, embedding_dim).to(self._device)
