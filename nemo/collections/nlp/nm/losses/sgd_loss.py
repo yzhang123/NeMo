@@ -23,7 +23,7 @@ https://github.com/google-research/google-research/blob/master/schema_guided_dst
 import torch
 
 from nemo import logging
-from nemo.backends.pytorch import LossNM
+from nemo.backends.pytorch import LossNM, BCEWithLogitsLossNM, CrossEntropyLossNM
 from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import STATUS_ACTIVE
 from nemo.core import ChannelType, LabelsType, LogitsType, NeuralType
 from nemo.utils.decorators import add_port_docs
@@ -58,24 +58,23 @@ class SGDDialogueStateLossNM(LossNM):
             noncategorical_slot_value_start (int): The index of the starting subword corresponding to the slot span for a non-categorical slot value
             noncategorical_slot_value_end (int): The index of the ending (inclusive) subword corresponding to the slot span for a non-categorical slot value
         """
+
         return {
-            "logit_intent_status": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "intent_status_labels": NeuralType(('B'), LabelsType()),
-            "logit_req_slot_status": NeuralType(('B', 'T'), LogitsType()),
-            "requested_slot_status": NeuralType(('B', 'T'), LabelsType()),
-            "req_slot_mask": NeuralType(('B', 'T'), ChannelType()),
-            "logit_cat_slot_status": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "categorical_slot_status": NeuralType(('B', 'T'), LabelsType()),
-            "cat_slot_status_mask": NeuralType(('B', 'T'), ChannelType()),
-            "logit_cat_slot_value": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "categorical_slot_values": NeuralType(('B', 'T'), LabelsType()),
-            "logit_noncat_slot_status": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "noncategorical_slot_status": NeuralType(('B', 'T'), LabelsType()),
-            "noncat_slot_status_mask": NeuralType(('B', 'T'), ChannelType()),
-            "logit_noncat_slot_start": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "logit_noncat_slot_end": NeuralType(('B', 'T', 'C'), LogitsType()),
-            "noncategorical_slot_value_start": NeuralType(('B', 'T'), LabelsType()),
-            "noncategorical_slot_value_end": NeuralType(('B', 'T'), LabelsType()),
+            "logit_intent_status": NeuralType(('B'), LogitsType()),
+            "intent_status": NeuralType(('B'), LabelsType()),
+            "logit_req_slot_status": NeuralType(('B'), LogitsType()),
+            "requested_slot_status": NeuralType(('B'), LabelsType()),
+            "logit_cat_slot_status": NeuralType(('B'), LogitsType()),
+            "categorical_slot_status": NeuralType(('B'), LabelsType()),
+            "logit_cat_slot_value_status": NeuralType(('B'), LogitsType()),
+            "categorical_slot_value_status": NeuralType(('B'), LabelsType()),
+            "logit_noncat_slot_status": NeuralType(('B'), LogitsType()),
+            "noncategorical_slot_status": NeuralType(('B'), LabelsType()),
+            "logit_noncat_slot_start": NeuralType(('B', 'T'), LogitsType()),
+            "logit_noncat_slot_end": NeuralType(('B', 'T'), LogitsType()),
+            "noncategorical_slot_value_start": NeuralType(('B'), LabelsType()),
+            "noncategorical_slot_value_end": NeuralType(('B'), LabelsType()),
+            "task_mask": NeuralType(('B', 'T'), ChannelType()),
         }
 
     @property
@@ -100,105 +99,103 @@ class SGDDialogueStateLossNM(LossNM):
 
         self.reduction = reduction
         self._cross_entropy = torch.nn.CrossEntropyLoss(reduction=self.reduction)
-        self._criterion_req_slots = torch.nn.BCEWithLogitsLoss(reduction=self.reduction)
+        self._cross_entropy_bin = torch.nn.BCEWithLogitsLoss(reduction=self.reduction)
+
+    def _helper(self, logits, labels, loss_mask):
+        logits_flatten = torch.flatten(logits, start_dim=0, end_dim=-2)
+        labels_flatten = torch.flatten(labels, start_dim=0, end_dim=-1)
+
+        if loss_mask is not None:
+            if loss_mask.dtype is not torch.bool:
+                loss_mask = loss_mask > 0.5
+            loss_mask_flatten = torch.flatten(loss_mask, start_dim=0, end_dim=-1)
+            logits_flatten = logits_flatten[loss_mask_flatten]
+            labels_flatten = labels_flatten[loss_mask_flatten]
+
+        return logits_flatten, labels_flatten
 
     def _loss_function(
         self,
         logit_intent_status,
-        intent_status_labels,
+        intent_status,
         logit_req_slot_status,
         requested_slot_status,
-        req_slot_mask,
         logit_cat_slot_status,
         categorical_slot_status,
-        cat_slot_status_mask,
-        logit_cat_slot_value,
-        categorical_slot_values,
+        logit_cat_slot_value_status,
+        categorical_slot_value_status,
         logit_noncat_slot_status,
         noncategorical_slot_status,
-        noncat_slot_status_mask,
         logit_noncat_slot_start,
         logit_noncat_slot_end,
         noncategorical_slot_value_start,
         noncategorical_slot_value_end,
+        task_mask
     ):
         # Intent loss
-        intent_loss = self._cross_entropy(logit_intent_status, intent_status_labels)
+        old_logit_intent_status = logit_intent_status
+        logit_intent_status, intent_status = self._helper(logit_intent_status, intent_status, task_mask[:, 0])
+        if len(intent_status) == 0:
+            intent_loss = torch.clamp(torch.max(old_logit_intent_status.view(-1)), 0, 0)
+        else:
+            intent_loss = self._cross_entropy_bin(logit_intent_status.squeeze(), intent_status)
 
-        # Requested slots.
-        # Shape: (batch_size, max_num_slots)
-        # mask unused slots
-        # Sigmoid cross entropy is used because more than one slots can be requested in a single utterance
-        req_slot_mask = req_slot_mask > 0.5
-        requested_slot_loss = self._criterion_req_slots(
-            logit_req_slot_status[req_slot_mask], requested_slot_status[req_slot_mask]
-        )
+        old_logit_req_slot_status = logit_req_slot_status
+        logit_req_slot_status, requested_slot_status = self._helper(logit_req_slot_status, requested_slot_status, task_mask[:, 1])
+        if len(requested_slot_status) == 0:
+            requested_slot_loss = torch.clamp(torch.max(old_logit_req_slot_status.view(-1)), 0, 0)
+        else:            
+            requested_slot_loss = self._cross_entropy_bin(
+                logit_req_slot_status.squeeze(), requested_slot_status
+            )
 
-        # Categorical slot status
-        # Shape of logit_cat_slot_status: (batch_size, max_num_cat_slots, 3)
-        # cat_slot_status_mask masks unused categorical padded slots for the service
-        cat_slot_status_mask = cat_slot_status_mask.view(-1) > 0.5
-        if sum(cat_slot_status_mask) == 0:
-            logging.warning(f'No categorical slots in the batch')
-            cat_slot_status_loss = torch.clamp(torch.max(logit_cat_slot_status.view(-1)), 0, 0)
+        old_logit_cat_slot_status = logit_cat_slot_status
+        logit_cat_slot_status, categorical_slot_status = self._helper(logit_cat_slot_status, categorical_slot_status, task_mask[:, 2])
+        if len(categorical_slot_status) == 0:
+            cat_slot_status_loss = torch.clamp(torch.max(old_logit_cat_slot_status.view(-1)), 0, 0)
         else:
             cat_slot_status_loss = self._cross_entropy(
-                logit_cat_slot_status.view(-1, 3)[cat_slot_status_mask],
-                categorical_slot_status.view(-1)[cat_slot_status_mask],
+                logit_cat_slot_status,
+                categorical_slot_status,
             )
-
-        # Categorical slot values.
-        # Shape: (batch_size, max_num_cat_slots, max_num_slot_values).
-        max_num_slot_values = logit_cat_slot_value.size()[-1]
-
-        # Zero out losses for categorical slot value when the slot status is not active.
-        cat_slot_value_mask = (categorical_slot_status == STATUS_ACTIVE).view(-1)
-        # to handle cases with no active categorical slot value
-        if sum(cat_slot_value_mask) == 0:
-            logging.warning(f'No active values for categorical slots in the batch.')
-            cat_slot_value_loss = torch.clamp(torch.max(logit_cat_slot_value.view(-1)), 0, 0)
+        old_logit_cat_slot_value_status = logit_cat_slot_value_status
+        logit_cat_slot_value_status, categorical_slot_value_status = self._helper(logit_cat_slot_value_status, categorical_slot_value_status, task_mask[:, 3])
+        if len(categorical_slot_value_status) == 0:
+            cat_slot_value_status_loss = torch.clamp(torch.max(old_logit_cat_slot_value_status.view(-1)), 0, 0)
         else:
-            slot_values_active_logits = logit_cat_slot_value.view(-1, max_num_slot_values)[cat_slot_value_mask]
-            slot_values_active_labels = categorical_slot_values.view(-1)[cat_slot_value_mask]
-            cat_slot_value_loss = self._cross_entropy(slot_values_active_logits, slot_values_active_labels)
+            cat_slot_value_status_loss = self._cross_entropy_bin(logit_cat_slot_value_status.squeeze(), categorical_slot_value_status)
 
-        # Non-categorical slot status.
-        # Shape: (batch_size, max_num_noncat_slots, 3).
-        # noncat_slot_status_mask masks unused noncat slots for the service
-        noncat_slot_status_mask = noncat_slot_status_mask.view(-1) > 0.5
-        if sum(noncat_slot_status_mask) == 0:
-            logging.warning(f'No active non-categorical slots in the batch.')
-            noncat_slot_status_loss = torch.clamp(torch.max(logit_noncat_slot_status.view(-1)), 0, 0)
+        old_logit_noncat_slot_status = logit_noncat_slot_status
+        logit_noncat_slot_status, noncategorical_slot_status = self._helper(logit_noncat_slot_status, noncategorical_slot_status, task_mask[:, 4])
+        if len(noncategorical_slot_status) == 0:
+            noncat_slot_status_loss = torch.clamp(torch.max(old_logit_noncat_slot_status.view(-1)), 0, 0)
         else:
             noncat_slot_status_loss = self._cross_entropy(
-                logit_noncat_slot_status.view(-1, 3)[noncat_slot_status_mask],
-                noncategorical_slot_status.view(-1)[noncat_slot_status_mask],
+                logit_noncat_slot_status,
+                noncategorical_slot_status,
             )
 
-        # Non-categorical slot spans.
-        # Shape: (batch_size, max_num_noncat_slots, max_num_tokens).n
-        max_num_tokens = logit_noncat_slot_start.size()[-1]
-        # Zero out losses for non-categorical slot spans when the slot status is not active.
-        non_cat_slot_value_mask = (noncategorical_slot_status == STATUS_ACTIVE).view(-1)
-        # to handle cases with no active categorical slot value
-        if sum(non_cat_slot_value_mask) == 0:
-            logging.warning(f'No active values for non-categorical slots in the batch.')
-            span_start_loss = torch.clamp(torch.max(logit_noncat_slot_start.view(-1)), 0, 0)
-            span_end_loss = torch.clamp(torch.max(logit_noncat_slot_end.view(-1)), 0, 0)
+        _, max_num_tokens = logit_noncat_slot_start.size()
+        old_logit_noncat_slot_start = logit_noncat_slot_start
+        logit_noncat_slot_start, noncategorical_slot_value_start = self._helper(logit_noncat_slot_start, noncategorical_slot_value_start, task_mask[:, 5])
+        if len(noncategorical_slot_value_start) == 0:
+            span_start_loss = torch.clamp(torch.max(old_logit_noncat_slot_start.view(-1)), 0, 0)
         else:
-            noncat_slot_start_active_logits = logit_noncat_slot_start.view(-1, max_num_tokens)[non_cat_slot_value_mask]
-            noncat_slot_start_active_labels = noncategorical_slot_value_start.view(-1)[non_cat_slot_value_mask]
-            span_start_loss = self._cross_entropy(noncat_slot_start_active_logits, noncat_slot_start_active_labels)
+            span_start_loss = self._cross_entropy(logit_noncat_slot_start, noncategorical_slot_value_start)
 
-            noncat_slot_end_active_logits = logit_noncat_slot_end.view(-1, max_num_tokens)[non_cat_slot_value_mask]
-            noncat_slot_end_active_labels = noncategorical_slot_value_end.view(-1)[non_cat_slot_value_mask]
-            span_end_loss = self._cross_entropy(noncat_slot_end_active_logits, noncat_slot_end_active_labels)
+        
+        old_logit_noncat_slot_end = logit_noncat_slot_end
+        logit_noncat_slot_end, noncategorical_slot_value_end = self._helper(logit_noncat_slot_end, noncategorical_slot_value_end, task_mask[:, 5])
+        if len(noncategorical_slot_value_end) == 0:
+            span_end_loss = torch.clamp(torch.max(old_logit_noncat_slot_end.view(-1)), 0, 0)
+        else:
+            span_end_loss = self._cross_entropy(logit_noncat_slot_end, noncategorical_slot_value_end)
 
         losses = {
             "intent_loss": intent_loss,
             "requested_slot_loss": requested_slot_loss,
             "cat_slot_status_loss": cat_slot_status_loss,
-            "cat_slot_value_loss": cat_slot_value_loss,
+            "cat_slot_value_status_loss": cat_slot_value_status_loss,
             "noncat_slot_status_loss": noncat_slot_status_loss,
             "span_start_loss": span_start_loss,
             "span_end_loss": span_end_loss,

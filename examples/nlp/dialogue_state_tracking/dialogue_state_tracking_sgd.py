@@ -311,7 +311,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
 # define model pipeline
 sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
 sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size, schema_emb_processor=schema_preprocessor, add_attention_head=args.add_attention_head
+    embedding_dim=hidden_size
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
@@ -336,38 +336,33 @@ def create_pipeline(dataset_split='train'):
         logit_intent_status,
         logit_req_slot_status,
         logit_cat_slot_status,
-        logit_cat_slot_value,
+        logit_cat_slot_value_status,
         logit_noncat_slot_status,
         logit_noncat_slot_start,
         logit_noncat_slot_end,
     ) = sgd_decoder(
         encoded_utterance=encoded_utterance,
         token_embeddings=token_embeddings,
-        utterance_mask=data.utterance_mask,
-        cat_slot_values_mask=data.cat_slot_values_mask,
-        intent_status_mask=data.intent_status_mask,
-        service_ids=data.service_id,
+        utterance_mask=data.utterance_mask
     )
 
     if dataset_split == 'train':
         loss = dst_loss(
             logit_intent_status=logit_intent_status,
-            intent_status_labels=data.intent_status_labels,
+            intent_status=data.intent_status,
             logit_req_slot_status=logit_req_slot_status,
             requested_slot_status=data.requested_slot_status,
-            req_slot_mask=data.req_slot_mask,
             logit_cat_slot_status=logit_cat_slot_status,
             categorical_slot_status=data.categorical_slot_status,
-            cat_slot_status_mask=data.cat_slot_status_mask,
-            logit_cat_slot_value=logit_cat_slot_value,
-            categorical_slot_values=data.categorical_slot_values,
+            logit_cat_slot_value_status=logit_cat_slot_value_status,
+            categorical_slot_value_status=data.categorical_slot_value_status,
             logit_noncat_slot_status=logit_noncat_slot_status,
             noncategorical_slot_status=data.noncategorical_slot_status,
-            noncat_slot_status_mask=data.noncat_slot_status_mask,
             logit_noncat_slot_start=logit_noncat_slot_start,
             logit_noncat_slot_end=logit_noncat_slot_end,
             noncategorical_slot_value_start=data.noncategorical_slot_value_start,
             noncategorical_slot_value_end=data.noncategorical_slot_value_end,
+            task_mask=data.task_mask
         )
         tensors = [loss]
     else:
@@ -380,15 +375,20 @@ def create_pipeline(dataset_split='train'):
             logit_intent_status,
             logit_req_slot_status,
             logit_cat_slot_status,
-            logit_cat_slot_value,
+            logit_cat_slot_value_status,
             logit_noncat_slot_status,
             logit_noncat_slot_start,
             logit_noncat_slot_end,
-            data.intent_status_labels,
+            data.intent_status,
+            data.intent_id,
             data.requested_slot_status,
+            data.requested_slot_id,
             data.categorical_slot_status,
-            data.categorical_slot_values,
+            data.categorical_slot_id,
+            data.categorical_slot_value_status,
+            data.categorical_slot_value_id,
             data.noncategorical_slot_status,
+            data.noncategorical_slot_id,
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus))
@@ -432,10 +432,10 @@ def get_eval_callback(eval_dataset):
     return eval_callback
 
 
-if args.eval_dataset == 'dev_test':
-    eval_callbacks = [get_eval_callback('dev'), get_eval_callback('test')]
-else:
-    eval_callbacks = [get_eval_callback(args.eval_dataset)]
+# if args.eval_dataset == 'dev_test':
+#     eval_callbacks = [get_eval_callback('dev'), get_eval_callback('test')]
+# else:
+#     eval_callbacks = [get_eval_callback(args.eval_dataset)]
 
 ckpt_callback = CheckpointCallback(
     folder=nf.checkpoint_dir, epoch_freq=args.save_epoch_freq, step_freq=args.save_step_freq, checkpoints_to_keep=1
@@ -447,7 +447,7 @@ lr_policy_fn = get_lr_policy(
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback, ckpt_callback] + eval_callbacks,
+    callbacks=[train_callback], #, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={

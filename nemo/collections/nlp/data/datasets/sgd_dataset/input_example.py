@@ -106,6 +106,7 @@ class InputExample(object):
         # Total number of slots present in the service. All slots are included here
         # since every slot can be requested.
         self.categorical_slot_value_id = 0
+        self.categorical_slot_value_status = STATUS_OFF
         self.requested_slot_id = 0
         # Takes value 1 if the corresponding slot is requested, 0 otherwise.
         self.requested_slot_status = STATUS_OFF
@@ -291,9 +292,11 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_DONTCARE
         else:
             self.categorical_slot_status = STATUS_ACTIVE
-            self.categorical_slot_value_id = self.service_schema.get_categorical_slot_value_id(
+            categorical_slot_value_id = self.service_schema.get_categorical_slot_value_id(
                 slot, values[0]
             )
+            if categorical_slot_value_id == self.categorical_slot_value_id:
+                self.categorical_slot_value_status = STATUS_ACTIVE
 
     def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for non-categorical slots."""
