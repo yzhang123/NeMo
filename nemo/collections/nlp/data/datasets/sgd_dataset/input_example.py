@@ -246,32 +246,13 @@ class InputExample(object):
         self.user_utterance = user_utterance
         self.system_utterance = system_utterance
 
-    def make_copy_with_utterance_features(self):
-        """Make a copy of the current example with utterance features."""
-        new_example = InputExample(
-            schema_config=self.schema_config,
-            service_schema=self.service_schema,
-            example_id=self.example_id,
-            example_id_num=self.example_id_num,
-            is_real_example=self.is_real_example,
-            tokenizer=self._tokenizer,
-        )
-        new_example.utterance_ids = list(self.utterance_ids)
-        new_example.utterance_segment = list(self.utterance_segment)
-        new_example.utterance_mask = list(self.utterance_mask)
-        new_example.start_char_idx = list(self.start_char_idx)
-        new_example.end_char_idx = list(self.end_char_idx)
-        new_example.user_utterance = self.user_utterance
-        new_example.system_utterance = self.system_utterance
-        return new_example
-
     def make_copy(self):
         """Make a copy of the current example with utterance features."""
         new_example = InputExample(
             schema_config=self.schema_config,
             service_schema=self.service_schema,
             example_id=self.example_id,
-            example_id_num=self.example_id_num,
+            example_id_num=self.example_id_num.copy(),
             is_real_example=self.is_real_example,
             tokenizer=self._tokenizer,
         )
@@ -292,11 +273,10 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_DONTCARE
         else:
             self.categorical_slot_status = STATUS_ACTIVE
-            categorical_slot_value_id = self.service_schema.get_categorical_slot_value_id(
+            self.categorical_slot_value_id = self.service_schema.get_categorical_slot_value_id(
                 slot, values[0]
             )
-            if categorical_slot_value_id == self.categorical_slot_value_id:
-                self.categorical_slot_value_status = STATUS_ACTIVE
+            self.categorical_slot_value_status = STATUS_ACTIVE
 
     def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for non-categorical slots."""
@@ -334,13 +314,12 @@ class InputExample(object):
     def add_requested_slots(self, frame):
         all_slots = self.service_schema.slots
         slot = all_slots[self.requested_slot_id]
-        self.requested_slot_id = all_slots.index(slot)
         if slot in frame["state"]["requested_slots"]:
             self.requested_slot_status = STATUS_ACTIVE
 
     def add_intents(self, frame):
         all_intents = self.service_schema.intents
-        intent = "" if not self.intent_id else all_intents[self.intent_id - 1]
+        intent = all_intents[self.intent_id]
         if intent == frame["state"]["active_intent"]:
             self.intent_status = STATUS_ACTIVE
 

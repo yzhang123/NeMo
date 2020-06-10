@@ -321,29 +321,102 @@ class SGDDataProcessor(object):
                         task_example = base_example.make_copy()
                         task_example.task_mask[model_task] = 1
                         task_example.intent_id = intent_id
-                        task_example.example_id += f"-{intent_id}"
-                        task_example.example_id_num.append(intent_id)
+                        task_example.example_id += f"-{intent_id}-0"
+                        task_example.example_id_num.extend([intent_id, 0])
                         intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
                         intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
                         task_example.add_utterance_features(
                             intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
                         )
-                        user_span_boundaries = self._find_subword_indices(
-                            state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(intent_tokens) + len(system_tokens)
-                        )
-                        if system_frame is not None: 
-                            system_span_boundaries = self._find_subword_indices(
-                                state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(intent_tokens)
-                            )
-                        else:
-                            system_span_boundaries = {}
-                        task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
-                        task_example.add_requested_slots(user_frame)
                         task_example.add_intents(user_frame)
-                        
-                        # Populate features in the base_example.
-                        base_example.add_categorical_slots(state_update)
                         examples.append(task_example)
+                    
+                elif model_task == 1:
+                    for slot_id, slot in enumerate(schemas.get_service_schema(service).slots):
+                        task_example = base_example.make_copy()
+                        task_example.task_mask[model_task] = 1
+                        task_example.requested_slot_id = slot_id
+                        task_example.example_id += f"-{slot_id}-0"
+                        task_example.example_id_num.extend([slot_id, 0])
+                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                        task_example.add_utterance_features(
+                            slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
+                        )
+                        task_example.add_requested_slots(user_frame)   
+                        examples.append(task_example) 
+                # elif model_task == 2:
+                #     for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
+                #         task_example = base_example.make_copy()
+                #         task_example.task_mask[model_task] = 1
+                #         task_example.categorical_slot_id = slot_id
+                #         task_example.example_id += f"-{slot_id}-0"
+                #         task_example.example_id_num.extend([slot_id, 0])
+                #         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                #         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                #         task_example.add_utterance_features(
+                #             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                #         )
+                #         task_example.add_categorical_slots(state_update)
+                #         examples.append(task_example)
+
+                #         if task_example.categorical_slot_value_status == 1:
+                #             for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                #                 task_example = base_example.make_copy()
+                #                 task_example.task_mask[model_task+1] = 1
+                #                 task_example.categorical_slot_id = slot_id
+                #                 task_example.example_id += f"-{value_id}"
+                #                 task_example.example_id_num.append(value_id)
+                #                 slot_description = slot + " " + value
+                #                 slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                #                 task_example.add_utterance_features(
+                #                     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                #                 )
+                #                 task_example.add_categorical_slots(state_update)
+                #                 examples.append(task_example)
+                    
+                # elif model_task == 4: # noncat slot status
+                #     for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
+                #         task_example = base_example.make_copy()
+                #         task_example.task_mask[model_task] = 1
+                #         task_example.noncategorical_slot_id = slot_id
+                #         task_example.example_id += f"-{slot_id}"
+                #         task_example.example_id_num.append(slot_id)
+                #         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                #         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                #         task_example.add_utterance_features(
+                #             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                #         )
+
+                #         user_span_boundaries = self._find_subword_indices(
+                #             state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens) + len(system_tokens)
+                #         )
+                #         if system_frame is not None: 
+                #             system_span_boundaries = self._find_subword_indices(
+                #                 state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(slot_tokens)
+                #             )
+                #         else:
+                #             system_span_boundaries = {}
+                #         task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                #         examples.append(task_example)
+
+                #         if task_example.noncategorical_slot_status == 1:
+                #             task_example = base_example.make_copy()
+                #             task_example.task_mask[model_task+1] = 1
+                #             task_example.noncategorical_slot_id = slot_id
+                #             task_example.example_id += f"-{slot_id}"
+                #             task_example.example_id_num.append(slot_id)
+                #             slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                #             slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                #             task_example.add_utterance_features(
+                #                 slot_tokens, slot_inv_alignments, system_user_tokens, user_inv_alignments, slot_description, user_utterance
+                #             )
+                #             user_span_boundaries = self._find_subword_indices(
+                #                 state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens)
+                #             )
+                #             system_span_boundaries = {}
+                #             task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                #             examples.append(task_example)
 
             if service not in prev_states and int(turn_id_) > 0:
                 for slot_name, values in state_update.items():

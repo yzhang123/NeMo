@@ -41,8 +41,9 @@ class ServiceSchema(object):
         # Construct the vocabulary for intents, slots, categorical slots,
         # non-categorical slots and categorical slot values. These vocabs are used
         # for generating indices for their embedding matrix.
-        self._intents = sorted(i["name"] for i in schema_json["intents"])
+        self._intents = ["NONE"] + sorted(i["name"] for i in schema_json["intents"])
         self._intent_descriptions = {i["name"]: i["description"] for i in schema_json["intents"]}
+        self._intent_descriptions["NONE"] = "none"
         self._slots = sorted(s["name"] for s in schema_json["slots"])
         self._slots_descriptions = {s["name"]: s["description"] for s in schema_json["slots"]}
         self._categorical_slots = sorted(
