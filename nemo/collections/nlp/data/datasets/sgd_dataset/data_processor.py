@@ -302,8 +302,6 @@ class SGDDataProcessor(object):
             state_update = self._get_state_update(state, prev_states.get(service, {}))
             states[service] = state
 
-            # Populate features in the base_example.
-            base_example.add_categorical_slots(state_update)
 
             for model_task in range(6):
 
@@ -320,29 +318,16 @@ class SGDDataProcessor(object):
                 ]
                 if model_task == 0:
                     for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
-                        task_example = base_example.make_copy_with_categorical_features()
+                        task_example = base_example.make_copy()
+                        task_example.task_mask[model_task] = 1
+                        task_example.intent_id = intent_id
                         task_example.example_id += f"-{intent_id}"
                         task_example.example_id_num.append(intent_id)
                         intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
                         intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
-                        # if model_task in [1, 5]:
-                        # else:
-
-                        
-                        # fill [CLS] + sys + [SEP] + user + [SEP]
-                        # fill masks
-                        # fill start_char_idx , end_char_idx
                         task_example.add_utterance_features(
                             intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
                         )
-
-                        # The input tokens to bert are in the format [CLS] [S1] [S2] ... [SEP]
-                        # [U1] [U2] ... [SEP] [PAD] ... [PAD]. For system token indices a bias of
-                        # 1 is added for the [CLS] token and for user tokens a bias of 2 +
-                        # len(system_tokens) is added to account for [CLS], system tokens and
-                        # [SEP].
-                        # user_alignments, user_tokens doesnt include special tokens e.g. CLS
-                    
                         user_span_boundaries = self._find_subword_indices(
                             state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(intent_tokens) + len(system_tokens)
                         )
@@ -355,6 +340,9 @@ class SGDDataProcessor(object):
                         task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
                         task_example.add_requested_slots(user_frame)
                         task_example.add_intents(user_frame)
+                        
+                        # Populate features in the base_example.
+                        base_example.add_categorical_slots(state_update)
                         examples.append(task_example)
 
             if service not in prev_states and int(turn_id_) > 0:
