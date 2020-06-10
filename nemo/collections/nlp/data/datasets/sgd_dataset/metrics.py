@@ -210,7 +210,6 @@ def get_slot_tagging_f1(frame_ref, frame_hyp, utt, service):
   Returns:
     A F1Scores object containing F1, precision, and recall scores.
   """
-
     list_noncat_slots = [s["name"] for s in service["slots"] if not s["is_categorical"]]
     if "slots" not in frame_hyp:
         return None

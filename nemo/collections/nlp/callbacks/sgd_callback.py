@@ -60,6 +60,8 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
         global_vars['predictions'] = []
 
     output = {}
+    # keys of eval tensors
+    # dict_keys(['example_id_num', 'service_id', 'is_real_example', 'start_char_idx', 'end_char_idx', 'logit_intent_status', 'logit_req_slot_status', 'logit_cat_slot_status', 'logit_cat_slot_value', 'logit_noncat_slot_status', 'logit_noncat_slot_start', 'logit_noncat_slot_end', 'intent_status_labels', 'requested_slot_status', 'categorical_slot_status', 'categorical_slot_values', 'noncategorical_slot_status'])
     for k, v in tensors.items():
         ind = k.find('~~~')
         if ind != -1:
@@ -111,6 +113,7 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
         torch.zeros(total_scores.size(), device=total_scores.device, dtype=total_scores.dtype),
         total_scores,
     )
+    # bs x 12
     max_span_index = torch.argmax(total_scores.view(-1, max_num_noncat_slots, max_num_tokens ** 2), axis=-1)
     max_span_p = torch.max(total_scores.view(-1, max_num_noncat_slots, max_num_tokens ** 2), axis=-1)[0]
     predictions['noncat_slot_p'] = max_span_p
@@ -135,7 +138,8 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
 
 def combine_predictions_in_example(predictions, batch_size):
     '''
-    Combines predicted values to a single example.
+    Combines predicted values to a single example. 
+    Dict: sample idx-> keys-> values
     '''
     examples_preds = [{} for _ in range(batch_size)]
     for k, v in predictions.items():
@@ -200,6 +204,7 @@ def evaluate(prediction_dir, data_dir, eval_dataset, in_domain_services, joint_a
     dataset_ref = get_dataset_as_dict(os.path.join(data_dir, eval_dataset, "dialogues_*.json"))
     dataset_hyp = get_dataset_as_dict(os.path.join(prediction_dir, "*.json"))
 
+    # has ALLSERVICE, SEEN_SERVICES, UNSEEN_SERVICES, SERVICE, DOMAIN
     all_metric_aggregate, _ = get_metrics(
         dataset_ref, dataset_hyp, eval_services, in_domain_services, joint_acc_across_turn, no_fuzzy_match
     )

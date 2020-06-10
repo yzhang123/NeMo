@@ -28,6 +28,7 @@ import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.data.datasets.sgd_dataset.data_processor as data_processor
 from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callback, eval_iter_callback
 from nemo.collections.nlp.data.datasets.sgd_dataset.schema_processor import SchemaPreprocessor
+from nemo.collections.nlp.data.datasets.sgd_dataset import schema
 from nemo.collections.nlp.nm.trainables import SGDDecoderNM, SGDEncoderNM
 from nemo.core import Backend, CheckpointCallback, EvaluatorCallback, NeuralModuleFactory, SimpleLossLoggerCallback
 from nemo.utils import logging
@@ -39,7 +40,7 @@ parser = argparse.ArgumentParser(description='Schema_guided_dst')
 # BERT based utterance encoder related arguments
 parser.add_argument(
     "--max_seq_length",
-    default=80,
+    default=128,
     type=int,
     help="The maximum total input sequence length after WordPiece tokenization. "
     "Sequences longer than this will be truncated, and sequences shorter "
@@ -247,6 +248,7 @@ if args.task_name == "multiwoz":
         "MAX_NUM_NONCAT_SLOT": 4,
         "MAX_NUM_VALUE_PER_CAT_SLOT": 47,
         "MAX_NUM_INTENT": 1,
+        "NUM_TASKS": 6,
     }
 else:
     schema_config = {
@@ -254,6 +256,7 @@ else:
         "MAX_NUM_NONCAT_SLOT": 12,
         "MAX_NUM_VALUE_PER_CAT_SLOT": 12,
         "MAX_NUM_INTENT": 4,
+        "NUM_TASKS": 6,
     }
 
 if not os.path.exists(args.data_dir):
@@ -290,26 +293,18 @@ tokenizer = nemo_nlp.data.tokenizers.get_tokenizer(
 
 hidden_size = pretrained_bert_model.hidden_size
 
-# Run SGD preprocessor to generate and store schema embeddings
-schema_preprocessor = SchemaPreprocessor(
-    data_dir=args.data_dir,
-    schema_embedding_dir=args.schema_embedding_dir,
-    schema_config=schema_config,
-    tokenizer=tokenizer,
-    bert_model=pretrained_bert_model,
-    overwrite_schema_emb_files=args.overwrite_schema_emb_files,
-    bert_ckpt_dir=args.checkpoint_dir,
-    nf=nf,
-    mode=args.schema_emb_init,
-    is_trainable=args.train_schema_emb,
-)
+all_schema_json_paths = []
+for dataset_split in ['train', 'test', 'dev']:
+    all_schema_json_paths.append(os.path.join(args.data_dir, dataset_split, "schema.json"))
+schemas = schema.Schema(all_schema_json_paths)
 
 dialogues_processor = data_processor.SGDDataProcessor(
     task_name=args.task_name,
     data_dir=args.data_dir,
     dialogues_example_dir=args.dialogues_example_dir,
     tokenizer=tokenizer,
-    schema_emb_processor=schema_preprocessor,
+    schemas=schemas,
+    schema_config=schema_config,
     overwrite_dial_files=args.overwrite_dial_files,
 )
 

@@ -50,7 +50,7 @@ class SGDDataProcessor(object):
     """Data generator for SGD dialogues."""
 
     def __init__(
-        self, task_name, data_dir, dialogues_example_dir, tokenizer, schema_emb_processor, overwrite_dial_files=False,
+        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False,
     ):
         """
         Constructs SGD8DataProcessor
@@ -59,15 +59,16 @@ class SGDDataProcessor(object):
             data_dir (str): path to data directory
             dialogues_example_dir (str): path to  store processed dialogue examples
             tokenizer (Tokenizer): such as NemoBertTokenizer
-            schema_emb_processor (Obj): contains information about schemas
+            schemas (Obj): contains information about schemas
             overwrite_dial_files (bool): whether to overwite dialogue files
         """
         self.data_dir = data_dir
         self.dialogues_examples_dir = dialogues_example_dir
 
         self._task_name = task_name
-        self.schema_config = schema_emb_processor.schema_config
-        self.schema_emb_processor = schema_emb_processor
+        # {'MAX_NUM_CAT_SLOT': 6, 'MAX_NUM_NONCAT_SLOT': 12, 'MAX_NUM_VALUE_PER_CAT_SLOT': 12, 'MAX_NUM_INTENT': 4, 'EMBEDDING_DIMENSION': 768, 'MAX_SEQ_LENGTH': 80}
+        self.schemas = schemas
+        self.schema_config = schema_config
 
         train_file_range = FILE_RANGES[task_name]["train"]
         dev_file_range = FILE_RANGES[task_name]["dev"]
@@ -113,7 +114,7 @@ class SGDDataProcessor(object):
                     if not os.path.exists(dialogues_example_dir):
                         os.makedirs(dialogues_example_dir)
                     dial_examples, slots_relation_list = self._generate_dialog_examples(
-                        dataset, schema_emb_processor.schemas
+                        dataset, schemas
                     )
                     with open(dial_file, "wb") as f:
                         np.save(f, dial_examples)
@@ -159,7 +160,7 @@ class SGDDataProcessor(object):
             )
 
         with open(self.slots_relation_file, "rb") as f:
-            self.schema_emb_processor.update_slots_relation_list(pickle.load(f))
+            self.schemas._slots_relation_list = pickle.load(f)
         logging.info(
             f"Loaded the slot relation list for value carry-over between services from {self.slots_relation_file}."
         )
@@ -282,63 +283,79 @@ class SGDDataProcessor(object):
             schemas (obj): carries information about the service from the current turn
         Returns:
             examples: a list of `InputExample`s.
-            prev_states (dict): updated dialogue state
+            prev_states (dict): updated dialogue state {'Restaurants_1': {'city': ['San Jose'], 'cuisine': ['American']}}
         """
-        system_tokens, system_alignments, system_inv_alignments = self._tokenize(system_utterance)
         user_tokens, user_alignments, user_inv_alignments = self._tokenize(user_utterance)
+        system_tokens, system_alignments, system_inv_alignments = self._tokenize(system_utterance)
+        system_user_utterance = system_utterance + ' ' + user_utterance
+        system_user_tokens, system_user_alignments, system_user_inv_alignments = self._tokenize(system_user_utterance)
         states = {}
-        base_example = InputExample(schema_config=self.schema_config, is_real_example=True, tokenizer=self._tokenizer,)
-        base_example.example_id = turn_id
-
-        _, dialog_id, turn_id_ = turn_id.split('-')
-        dialog_id_1, dialog_id_2 = dialog_id.split('_')
-        base_example.example_id_num = [int(dialog_id_1), int(dialog_id_2), int(turn_id_)]
-        base_example.add_utterance_features(
-            system_tokens, system_inv_alignments, user_tokens, user_inv_alignments, system_utterance, user_utterance
-        )
 
         examples = []
         slot_carryover_values = collections.defaultdict(list)
         for service, user_frame in user_frames.items():
-            # Create an example for this service.
-            example = base_example.make_copy_with_utterance_features()
-
-            example.example_id = "{}-{}".format(turn_id, service)
-            _, dialog_id, turn_id_ = turn_id.split('-')
-            dialog_id_1, dialog_id_2 = dialog_id.split('_')
-            example.example_id_num = [
-                int(dialog_id_1),
-                int(dialog_id_2),
-                int(turn_id_),
-                schemas.get_service_id(service),
-            ]
-
-            example.service_schema = schemas.get_service_schema(service)
+            
+            base_example = InputExample(schema_config=self.schema_config, is_real_example=True, tokenizer=self._tokenizer,)
+            base_example.service_schema = schemas.get_service_schema(service)
             system_frame = system_frames.get(service, None)
             state = user_frame["state"]["slot_values"]
             state_update = self._get_state_update(state, prev_states.get(service, {}))
             states[service] = state
 
-            # Populate features in the example.
-            example.add_categorical_slots(state_update)
-            # The input tokens to bert are in the format [CLS] [S1] [S2] ... [SEP]
-            # [U1] [U2] ... [SEP] [PAD] ... [PAD]. For system token indices a bias of
-            # 1 is added for the [CLS] token and for user tokens a bias of 2 +
-            # len(system_tokens) is added to account for [CLS], system tokens and
-            # [SEP].
-            user_span_boundaries = self._find_subword_indices(
-                state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(system_tokens)
-            )
-            if system_frame is not None:
-                system_span_boundaries = self._find_subword_indices(
-                    state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 1
-                )
-            else:
-                system_span_boundaries = {}
-            example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
-            example.add_requested_slots(user_frame)
-            example.add_intents(user_frame)
-            examples.append(example)
+            # Populate features in the base_example.
+            base_example.add_categorical_slots(state_update)
+
+            for model_task in range(6):
+
+                _, dialog_id, turn_id_ = turn_id.split('-')
+                dialog_id_1, dialog_id_2 = dialog_id.split('_')
+
+                base_example.example_id = f"{turn_id}-{service}-{model_task}"
+                base_example.example_id_num = [
+                    int(dialog_id_1),
+                    int(dialog_id_2),
+                    int(turn_id_),
+                    schemas.get_service_id(service),
+                    model_task,
+                ]
+                if model_task == 0:
+                    for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
+                        task_example = base_example.make_copy_with_categorical_features()
+                        task_example.example_id += f"-{intent_id}"
+                        task_example.example_id_num.append(intent_id)
+                        intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
+                        intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
+                        # if model_task in [1, 5]:
+                        # else:
+
+                        
+                        # fill [CLS] + sys + [SEP] + user + [SEP]
+                        # fill masks
+                        # fill start_char_idx , end_char_idx
+                        task_example.add_utterance_features(
+                            intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
+                        )
+
+                        # The input tokens to bert are in the format [CLS] [S1] [S2] ... [SEP]
+                        # [U1] [U2] ... [SEP] [PAD] ... [PAD]. For system token indices a bias of
+                        # 1 is added for the [CLS] token and for user tokens a bias of 2 +
+                        # len(system_tokens) is added to account for [CLS], system tokens and
+                        # [SEP].
+                        # user_alignments, user_tokens doesnt include special tokens e.g. CLS
+                    
+                        user_span_boundaries = self._find_subword_indices(
+                            state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(intent_tokens) + len(system_tokens)
+                        )
+                        if system_frame is not None: 
+                            system_span_boundaries = self._find_subword_indices(
+                                state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(intent_tokens)
+                            )
+                        else:
+                            system_span_boundaries = {}
+                        task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                        task_example.add_requested_slots(user_frame)
+                        task_example.add_intents(user_frame)
+                        examples.append(task_example)
 
             if service not in prev_states and int(turn_id_) > 0:
                 for slot_name, values in state_update.items():
@@ -399,10 +416,11 @@ class SGDDataProcessor(object):
         # direct concatenation of all the tokens in the sequence will be the
         # original string.
         tokens = SGDDataProcessor._naive_tokenize(utterance)
+        # ['I', ' ', 'am', ' ', 'feeling', ' ', 'hungry', ' ', 'so', ' ', 'I', ' ', 'would', ' ', 'like', ' ', 'to', ' ', 'find', ' ', 'a', ' ', 'place', ' ', 'to', ' ', 'eat', '.']
         # Filter out empty tokens and obtain aligned character index for each token.
         alignments = {}
         char_index = 0
-        bert_tokens = []
+        bert_tokens = [] # ['I', 'am', 'feeling', 'hungry', 'so', 'I', 'would', 'like', 'to', 'find', 'a', 'place', 'to', 'eat', '.']
         # These lists store inverse alignments to be used during inference.
         bert_tokens_start_chars = []
         bert_tokens_end_chars = []

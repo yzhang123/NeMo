@@ -174,10 +174,6 @@ def get_predicted_dialog_nemotracker(dialog, all_predictions, schemas, eval_debu
         if turn["speaker"] == "SYSTEM":
             sys_slots_last = defaultdict(OrderedDict)
             for frame in turn["frames"]:
-                if frame["service"] not in sys_slots_agg:
-                    sys_slots_agg[frame["service"]] = OrderedDict()
-                if frame["service"] not in sys_slots_last:
-                    sys_slots_last[frame["service"]] = OrderedDict()
                 for action in frame["actions"]:
                     if action["slot"] and len(action["values"]) > 0:
                         sys_slots_agg[frame["service"]][action["slot"]] = action["values"][0]

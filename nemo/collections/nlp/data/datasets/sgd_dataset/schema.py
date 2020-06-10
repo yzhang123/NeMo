@@ -42,7 +42,9 @@ class ServiceSchema(object):
         # non-categorical slots and categorical slot values. These vocabs are used
         # for generating indices for their embedding matrix.
         self._intents = sorted(i["name"] for i in schema_json["intents"])
+        self._intent_descriptions = {i["name"]: i["description"] for i in schema_json["intents"]}
         self._slots = sorted(s["name"] for s in schema_json["slots"])
+        self._slots_descriptions = {s["name"]: s["description"] for s in schema_json["slots"]}
         self._categorical_slots = sorted(
             s["name"] for s in schema_json["slots"] if s["is_categorical"] and s["name"] in self.state_slots
         )
@@ -93,6 +95,14 @@ class ServiceSchema(object):
     @property
     def intents(self):
         return self._intents
+
+    @property
+    def intent_descriptions(self):
+        return self._intent_descriptions
+    
+    @property
+    def slot_descriptions(self):
+        return self._slots_descriptions
 
     @property
     def categorical_slots(self):
