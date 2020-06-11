@@ -133,14 +133,12 @@ class SGDDialogueStateLossNM(LossNM):
         task_mask
     ):
         # Intent loss
-        
-        logging.info(logit_intent_status.shape[0], requested_slot_status.shape[0], logit_noncat_slot_end.shape[0])
         old_logit_intent_status = logit_intent_status
         logit_intent_status, intent_status = self._helper(logit_intent_status, intent_status, task_mask[:, 0])
         if len(intent_status) == 0:
             intent_loss = torch.clamp(torch.max(old_logit_intent_status.view(-1)), 0, 0)
         else:
-            intent_loss = self._cross_entropy_bin(logit_intent_status.squeeze(), intent_status)
+            intent_loss = self._cross_entropy_bin(logit_intent_status.squeeze(dim=-1), intent_status)
 
         old_logit_req_slot_status = logit_req_slot_status
         logit_req_slot_status, requested_slot_status = self._helper(logit_req_slot_status, requested_slot_status, task_mask[:, 1])
@@ -148,7 +146,7 @@ class SGDDialogueStateLossNM(LossNM):
             requested_slot_loss = torch.clamp(torch.max(old_logit_req_slot_status.view(-1)), 0, 0)
         else:            
             requested_slot_loss = self._cross_entropy_bin(
-                logit_req_slot_status.squeeze(), requested_slot_status
+                logit_req_slot_status.squeeze(dim=-1), requested_slot_status
             )
 
         old_logit_cat_slot_status = logit_cat_slot_status
@@ -165,11 +163,7 @@ class SGDDialogueStateLossNM(LossNM):
         if len(categorical_slot_value_status) == 0:
             cat_slot_value_status_loss = torch.clamp(torch.max(old_logit_cat_slot_value_status.view(-1)), 0, 0)
         else:
-            try:
-                cat_slot_value_status_loss = self._cross_entropy_bin(logit_cat_slot_value_status.squeeze(), categorical_slot_value_status)
-            except:
-                import ipdb; ipdb.set_trace()
-            logging.info("cat val")
+            cat_slot_value_status_loss = self._cross_entropy_bin(logit_cat_slot_value_status.squeeze(dim=-1), categorical_slot_value_status)
 
         old_logit_noncat_slot_status = logit_noncat_slot_status
         logit_noncat_slot_status, noncategorical_slot_status = self._helper(logit_noncat_slot_status, noncategorical_slot_status, task_mask[:, 4])

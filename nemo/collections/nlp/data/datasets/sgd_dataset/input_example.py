@@ -260,14 +260,7 @@ class InputExample(object):
 
     def make_copy_of_categorical_features(self):
         """Make a copy of the current example with utterance features."""
-        new_example = InputExample(
-            schema_config=self.schema_config,
-            service_schema=self.service_schema,
-            example_id=self.example_id,
-            example_id_num=self.example_id_num.copy(),
-            is_real_example=self.is_real_example,
-            tokenizer=self._tokenizer,
-        )
+        new_example = self.make_copy()
 
         new_example.categorical_slot_status = self.categorical_slot_status
         new_example.categorical_slot_value_id = self.categorical_slot_value_id

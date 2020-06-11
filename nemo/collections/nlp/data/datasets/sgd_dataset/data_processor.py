@@ -302,19 +302,18 @@ class SGDDataProcessor(object):
             state_update = self._get_state_update(state, prev_states.get(service, {}))
             states[service] = state
 
+            _, dialog_id, turn_id_ = turn_id.split('-')
+            dialog_id_1, dialog_id_2 = dialog_id.split('_')
+
+            base_example.example_id = f"{turn_id}-{service}"
+            base_example.example_id_num = [
+                int(dialog_id_1),
+                int(dialog_id_2),
+                int(turn_id_),
+                schemas.get_service_id(service),
+            ]
 
             for model_task in range(6):
-
-                _, dialog_id, turn_id_ = turn_id.split('-')
-                dialog_id_1, dialog_id_2 = dialog_id.split('_')
-
-                base_example.example_id = f"{turn_id}-{service}"
-                base_example.example_id_num = [
-                    int(dialog_id_1),
-                    int(dialog_id_2),
-                    int(turn_id_),
-                    schemas.get_service_id(service),
-                ]
                 # if model_task == 0:
                 #     for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
                 #         task_example = base_example.make_copy()
@@ -368,14 +367,14 @@ class SGDDataProcessor(object):
                                 task_example.task_mask[3] = 1
                                 assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
                                 task_example.categorical_slot_id = slot_id
-                                task_example.example_id = base_example.example_id + f"3-{slot_id}-{value_id}"
+                                task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
                                 task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
                                 slot_description = slot + " " + value
                                 slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                                 task_example.add_utterance_features(
                                     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
                                 )
-                                task_example.add_categorical_slots(state_update)
+                                # task_example.add_categorical_slots(state_update)
                                 assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
                                 assert(task_example.categorical_slot_value_id == old_example.categorical_slot_value_id)
                                 assert(task_example.categorical_slot_value_status == old_example.categorical_slot_value_status)
@@ -413,9 +412,8 @@ class SGDDataProcessor(object):
                             task_example.task_mask[5] = 1
                             assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
                             task_example.noncategorical_slot_id = slot_id
-                            task_example.example_id = base_example.example_id + f"5-{slot_id}-0"
+                            task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
                             task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
-                            slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
          
                             task_example.add_utterance_features(
                                 slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
