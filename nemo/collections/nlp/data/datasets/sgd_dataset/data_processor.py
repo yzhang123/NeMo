@@ -301,8 +301,7 @@ class SGDDataProcessor(object):
             state = user_frame["state"]["slot_values"]
             state_update = self._get_state_update(state, prev_states.get(service, {}))
             states[service] = state
-
-            _, dialog_id, turn_id_ = turn_id.split('-')
+            dataset_split, dialog_id, turn_id_ = turn_id.split('-')
             dialog_id_1, dialog_id_2 = dialog_id.split('_')
 
             base_example.example_id = f"{turn_id}-{service}"
@@ -361,15 +360,16 @@ class SGDDataProcessor(object):
                         examples.append(task_example)
                         old_example = task_example
 
-                        if task_example.categorical_slot_value_status == 1:
-                            for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                        for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                            if dataset_split != 'train' or task_example.categorical_slot_value_status == 1:
+                            # if task_example.categorical_slot_value_status == 1:
                                 task_example = old_example.make_copy_of_categorical_features()
                                 task_example.task_mask[3] = 1
                                 assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
                                 task_example.categorical_slot_id = slot_id
                                 task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
                                 task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value
+                                slot_description = slot + " " + value # add slot description
                                 slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                                 task_example.add_utterance_features(
                                     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance

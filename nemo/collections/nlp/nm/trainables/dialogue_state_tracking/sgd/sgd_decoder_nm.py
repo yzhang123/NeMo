@@ -205,7 +205,7 @@ class SGDDecoderNM(TrainableNM):
             "logit_intent_status": NeuralType(('B'), LogitsType()),
             "logit_req_slot_status": NeuralType(('B'), LogitsType()),
             "logit_cat_slot_status": NeuralType(('B'), LogitsType()),
-            "logit_cat_slot_value": NeuralType(('B'), LogitsType()),
+            "logit_cat_slot_value_status": NeuralType(('B'), LogitsType()),
             "logit_noncat_slot_status": NeuralType(('B'), LogitsType()),
             "logit_noncat_slot_start": NeuralType(('B', 'T'), LogitsType()),
             "logit_noncat_slot_end": NeuralType(('B', 'T'), LogitsType()),

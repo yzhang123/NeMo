@@ -378,17 +378,7 @@ def create_pipeline(dataset_split='train'):
             logit_cat_slot_value_status,
             logit_noncat_slot_status,
             logit_noncat_slot_start,
-            logit_noncat_slot_end,
-            data.intent_status,
-            data.intent_id,
-            data.requested_slot_status,
-            data.requested_slot_id,
-            data.categorical_slot_status,
-            data.categorical_slot_id,
-            data.categorical_slot_value_status,
-            data.categorical_slot_value_id,
-            data.noncategorical_slot_status,
-            data.noncategorical_slot_id,
+            logit_noncat_slot_end
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus))
@@ -412,7 +402,7 @@ def get_eval_callback(eval_dataset):
     _, eval_tensors = create_pipeline(dataset_split=eval_dataset)
     eval_callback = EvaluatorCallback(
         eval_tensors=eval_tensors,
-        user_iter_callback=lambda x, y: eval_iter_callback(x, y, schema_preprocessor, eval_dataset),
+        user_iter_callback=lambda x, y: eval_iter_callback(x, y, schemas, eval_dataset),
         user_epochs_done_callback=lambda x: eval_epochs_done_callback(
             x,
             args.task_name,
@@ -422,7 +412,7 @@ def get_eval_callback(eval_dataset):
             args.state_tracker,
             args.debug_mode,
             dialogues_processor,
-            schema_preprocessor,
+            schemas,
             args.joint_acc_across_turn,
             args.no_fuzzy_match,
         ),
@@ -432,10 +422,10 @@ def get_eval_callback(eval_dataset):
     return eval_callback
 
 
-# if args.eval_dataset == 'dev_test':
-#     eval_callbacks = [get_eval_callback('dev'), get_eval_callback('test')]
-# else:
-#     eval_callbacks = [get_eval_callback(args.eval_dataset)]
+if args.eval_dataset == 'dev_test':
+    eval_callbacks = [get_eval_callback('dev'), get_eval_callback('test')]
+else:
+    eval_callbacks = [get_eval_callback(args.eval_dataset)]
 
 ckpt_callback = CheckpointCallback(
     folder=nf.checkpoint_dir, epoch_freq=args.save_epoch_freq, step_freq=args.save_step_freq, checkpoints_to_keep=1
@@ -447,7 +437,7 @@ lr_policy_fn = get_lr_policy(
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback], #, ckpt_callback] + eval_callbacks,
+    callbacks=[train_callback] + eval_callbacks, #, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={

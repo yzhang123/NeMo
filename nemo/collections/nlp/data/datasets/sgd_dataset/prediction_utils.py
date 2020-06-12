@@ -477,6 +477,57 @@ def get_predicted_dialog_nemotracker(dialog, all_predictions, schemas, eval_debu
 
     return dialog
 
+def get_predicted_intent_baseline(predictions, intents):
+    """
+    returns intent name with maximum score
+    """
+    assert(len(predictions) == intents)
+    active_intent_id=max(predictions, key=lambda k: predictions[k][0]['intent_status'])
+    return (
+        intents[active_intent_id]
+    )
+
+def get_requested_slot_baseline(predictions, slots):
+    """
+    returns list of slots which are predicted to be requested
+    """
+    active_indices = [k[0] for k in predictions if predictions[k][0]["req_slot_status"] > REQ_SLOT_THRESHOLD]
+    requested_slots = list(map(lambda k: slots[k], active_indices))
+    return requested_slots
+
+def set_cat_slot_baseline(predictions_status, predictions_value, cat_slots, cat_slot_values, out_dict):
+    """
+    write predicted slot and values into out_dict 
+    """
+    for slot_idx, slot in enumerate(cat_slots):
+        slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
+        if slot_status == STATUS_DONTCARE:
+            out_dict[slot] = STR_DONTCARE
+        elif slot_status == STATUS_ACTIVE:
+            tmp = predictions_value[slot_idx]
+            value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
+            out_dict[slot] = cat_slot_values[value_idx]
+
+def set_noncat_slot_baseline(predictions_status, non_cat_slots, user_utterance, out_dict):
+    """
+    write predicted slot and values into out_dict 
+    """
+    for slot_idx, slot in enumerate(non_cat_slots):
+        slot_status = predictions_status[slot_idx][0]["noncat_slot_status"]
+        if slot_status == STATUS_DONTCARE:
+            out_dict[slot] = STR_DONTCARE
+        elif slot_status == STATUS_ACTIVE:
+            tok_start_idx = predictions_status[slot_idx][0]["noncat_slot_start"]
+            tok_end_idx = predictions_status[slot_idx][0]["noncat_slot_end"]
+            ch_start_idx = predictions_status[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
+            ch_end_idx = predictions_status[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
+            # if ch_start_idx < 0 and ch_end_idx < 0:
+            #     # Add span from the system utterance.
+            #     out_dict[slot] = system_utterance[-ch_start_idx - 1 : -ch_end_idx]
+            if ch_start_idx > 0 and ch_end_idx > 0:
+                # Add span from the user utterance.
+                out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
+
 
 def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
     """Update labels in a dialogue based on model predictions.
@@ -497,6 +548,7 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
         if turn["speaker"] == "USER":
             user_utterance = turn["utterance"]
             system_utterance = dialog["turns"][turn_idx - 1]["utterance"] if turn_idx else ""
+            system_user_utterance = system_utterance + ' ' + user_utterance
             turn_id = "{:02d}".format(turn_idx)
             for frame in turn["frames"]:
                 predictions = all_predictions[(dialog_id, turn_id, frame["service"])]
@@ -509,46 +561,17 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
                 # The baseline model doesn't predict slot spans. Only state predictions
                 # are added.
                 state = {}
-
-                # Add prediction for active intent. Offset is subtracted to account for
-                # NONE intent.
-                active_intent_id = predictions["intent_status"]
-                state["active_intent"] = (
-                    service_schema.get_intent_from_id(active_intent_id - 1) if active_intent_id else "NONE"
-                )
-
+                
+                # Add prediction for active intent. No Offset is subtracted since schema has now NONE intent at index 0
+                state["active_intent"] = "NONE" #get_predicted_intent_baseline(predictions=predictions[0], intents=service_schema.intents)
                 # Add prediction for requested slots.
-                requested_slots = []
-                for slot_idx, slot in enumerate(service_schema.slots):
-                    if predictions["req_slot_status"][slot_idx] > REQ_SLOT_THRESHOLD:
-                        requested_slots.append(slot)
-                state["requested_slots"] = requested_slots
+                state["requested_slots"] = [] # get_requested_slot_baseline(predictions=predictions[1], slots=service_schema.slots)
 
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
-                for slot_idx, slot in enumerate(service_schema.categorical_slots):
-                    slot_status = predictions["cat_slot_status"][slot_idx]
-                    if slot_status == STATUS_DONTCARE:
-                        slot_values[slot] = STR_DONTCARE
-                    elif slot_status == STATUS_ACTIVE:
-                        value_idx = predictions["cat_slot_value"][slot_idx]
-                        slot_values[slot] = service_schema.get_categorical_slot_values(slot)[value_idx]
+                set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, out_dict=slot_values)
                 # Non-categorical slots.
-                for slot_idx, slot in enumerate(service_schema.non_categorical_slots):
-                    slot_status = predictions["noncat_slot_status"][slot_idx]
-                    if slot_status == STATUS_DONTCARE:
-                        slot_values[slot] = STR_DONTCARE
-                    elif slot_status == STATUS_ACTIVE:
-                        tok_start_idx = predictions["noncat_slot_start"][slot_idx]
-                        tok_end_idx = predictions["noncat_slot_end"][slot_idx]
-                        ch_start_idx = predictions["noncat_alignment_start"][tok_start_idx]
-                        ch_end_idx = predictions["noncat_alignment_end"][tok_end_idx]
-                        if ch_start_idx < 0 and ch_end_idx < 0:
-                            # Add span from the system utterance.
-                            slot_values[slot] = system_utterance[-ch_start_idx - 1 : -ch_end_idx]
-                        elif ch_start_idx > 0 and ch_end_idx > 0:
-                            # Add span from the user utterance.
-                            slot_values[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
+                set_noncat_slot_baseline(predictions_status=predictions[4], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
                 # Create a new dict to avoid overwriting the state in previous turns
                 # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}
@@ -572,12 +595,12 @@ def write_predictions_to_file(
     logging.info(f"Writing predictions to {output_dir} started.")
 
     # Index all predictions.
-    all_predictions = {}
+    all_predictions = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     for idx, prediction in enumerate(predictions):
         if not prediction["is_real_example"]:
             continue
-        eval_dataset, dialog_id, turn_id, service_name = prediction['example_id'].split('-')
-        all_predictions[(dialog_id, turn_id, service_name)] = prediction
+        eval_dataset, dialog_id, turn_id, service_name, model_task, slot_intent_id, value_id = prediction['example_id'].split('-')
+        all_predictions[(dialog_id, turn_id, service_name)][int(model_task)][int(slot_intent_id)][int(value_id)] = prediction
     logging.info(f'Predictions for {idx} examples in {eval_dataset} dataset are getting processed.')
 
     # Read each input file and write its predictions.

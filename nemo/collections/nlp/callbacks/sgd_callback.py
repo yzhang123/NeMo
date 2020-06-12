@@ -47,15 +47,15 @@ def tensor2list(tensor):
 
 def get_str_example_id(eval_dataset, ids_to_service_names_dict, example_id_num):
     def format_turn_id(ex_id_num):
-        dialog_id_1, dialog_id_2, turn_id, service_id = ex_id_num
-        return "{}-{}_{:05d}-{:02d}-{}".format(
-            eval_dataset, dialog_id_1, dialog_id_2, turn_id, ids_to_service_names_dict[service_id]
+        dialog_id_1, dialog_id_2, turn_id, service_id, model_task_id, slot_intent_id, value_id = ex_id_num
+        return "{}-{}_{:05d}-{:02d}-{}-{}-{}-{}".format(
+            eval_dataset, dialog_id_1, dialog_id_2, turn_id, ids_to_service_names_dict[service_id], model_task_id, slot_intent_id, value_id
         )
 
     return list(map(format_turn_id, tensor2list(example_id_num)))
 
 
-def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
+def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     if 'predictions' not in global_vars:
         global_vars['predictions'] = []
 
@@ -68,27 +68,25 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
             output[k[:ind]] = torch.cat(v)
 
     predictions = {}
-    ids_to_service_names_dict = schema_processor.get_ids_to_service_names_dict()
+    ids_to_service_names_dict = schemas._services_id_to_vocab
     predictions['example_id'] = get_str_example_id(eval_dataset, ids_to_service_names_dict, output['example_id_num'])
 
     predictions['service_id'] = output['service_id']
     predictions['is_real_example'] = output['is_real_example']
 
-    # Scores are output for each intent.
+    # Prob Scores are output for each intent.
     # Note that the intent indices are shifted by 1 to account for NONE intent.
-    predictions['intent_status'] = torch.argmax(output['logit_intent_status'], -1)
+    predictions['intent_status'] = torch.nn.Sigmoid()(output['logit_intent_status'])
 
     # Scores are output for each requested slot.
     predictions['req_slot_status'] = torch.nn.Sigmoid()(output['logit_req_slot_status'])
 
     # For categorical slots, the status of each slot and the predicted value are output.
     cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_cat_slot_status'])
-    cat_slot_value_dist = torch.nn.Softmax(dim=-1)(output['logit_cat_slot_value'])
 
     predictions['cat_slot_status'] = torch.argmax(output['logit_cat_slot_status'], axis=-1)
     predictions['cat_slot_status_p'] = torch.max(cat_slot_status_dist, axis=-1)[0]
-    predictions['cat_slot_value'] = torch.argmax(output['logit_cat_slot_value'], axis=-1)
-    predictions['cat_slot_value_p'] = torch.max(cat_slot_value_dist, axis=-1)[0]
+    predictions['cat_slot_value_status'] = torch.nn.Sigmoid()(output['logit_cat_slot_value_status'])
 
     # For non-categorical slots, the status of each slot and the indices for spans are output.
     noncat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_noncat_slot_status'])
@@ -100,22 +98,21 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
     start_scores = softmax(output['logit_noncat_slot_start'])
     end_scores = softmax(output['logit_noncat_slot_end'])
 
-    batch_size, max_num_noncat_slots, max_num_tokens = end_scores.size()
+    batch_size, max_num_tokens = end_scores.size()
     # Find the span with the maximum sum of scores for start and end indices.
-    total_scores = torch.unsqueeze(start_scores, axis=3) + torch.unsqueeze(end_scores, axis=2)
+    total_scores = torch.unsqueeze(start_scores, axis=2) + torch.unsqueeze(end_scores, axis=1)
     # Mask out scores where start_index > end_index.
     # device = total_scores.device
-    start_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, 1, -1, 1)
-    end_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, 1, 1, -1)
-    invalid_index_mask = (start_idx > end_idx).repeat(batch_size, max_num_noncat_slots, 1, 1)
+    start_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, -1, 1)
+    end_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, 1, -1)
+    invalid_index_mask = (start_idx > end_idx).repeat(batch_size, 1, 1)
     total_scores = torch.where(
         invalid_index_mask,
         torch.zeros(total_scores.size(), device=total_scores.device, dtype=total_scores.dtype),
         total_scores,
     )
-    # bs x 12
-    max_span_index = torch.argmax(total_scores.view(-1, max_num_noncat_slots, max_num_tokens ** 2), axis=-1)
-    max_span_p = torch.max(total_scores.view(-1, max_num_noncat_slots, max_num_tokens ** 2), axis=-1)[0]
+    max_span_index = torch.argmax(total_scores.view(-1, max_num_tokens ** 2), axis=-1)
+    max_span_p = torch.max(total_scores.view(-1, max_num_tokens ** 2), axis=-1)[0]
     predictions['noncat_slot_p'] = max_span_p
 
     span_start_index = torch.div(max_span_index, max_num_tokens)
@@ -129,9 +126,9 @@ def eval_iter_callback(tensors, global_vars, schema_processor, eval_dataset):
     predictions['noncat_alignment_end'] = output['end_char_idx']
 
     # added for debugging
-    predictions['cat_slot_status_GT'] = output['categorical_slot_status']
-    predictions['noncat_slot_status_GT'] = output['noncategorical_slot_status']
-    predictions['cat_slot_value_GT'] = output['categorical_slot_values']
+    # predictions['cat_slot_status_GT'] = output['categorical_slot_status']
+    # predictions['noncat_slot_status_GT'] = output['noncategorical_slot_status']
+    # predictions['cat_slot_value_GT'] = output['categorical_slot_values']
 
     global_vars['predictions'].extend(combine_predictions_in_example(predictions, batch_size))
 
@@ -163,7 +160,7 @@ def eval_epochs_done_callback(
     state_tracker,
     eval_debug,
     dialogues_processor,
-    schema_emb_preprocessor,
+    schemas,
     joint_acc_across_turn,
     no_fuzzy_match,
 ):
@@ -181,7 +178,7 @@ def eval_epochs_done_callback(
         global_vars['predictions'],
         input_json_files,
         prediction_dir,
-        schemas=schema_emb_preprocessor.schemas,
+        schemas=schemas,
         state_tracker=state_tracker,
         eval_debug=eval_debug,
         in_domain_services=in_domain_services,
