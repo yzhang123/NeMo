@@ -313,35 +313,35 @@ class SGDDataProcessor(object):
             ]
 
             for model_task in range(6):
-                # if model_task == 0:
-                #     for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
-                #         task_example = base_example.make_copy()
-                #         task_example.task_mask[model_task] = 1
-                #         task_example.intent_id = intent_id
-                #         task_example.example_id += f"-{model_task}-{intent_id}-0"
-                #         task_example.example_id_num.extend([model_task, intent_id, 0])
-                #         intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
-                #         intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
-                #         task_example.add_utterance_features(
-                #             intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
-                #         )
-                #         task_example.add_intents(user_frame)
-                #         examples.append(task_example)
+                if model_task == 0:
+                    for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
+                        task_example = base_example.make_copy()
+                        task_example.task_mask[model_task] = 1
+                        task_example.intent_id = intent_id
+                        task_example.example_id += f"-{model_task}-{intent_id}-0"
+                        task_example.example_id_num.extend([model_task, intent_id, 0])
+                        intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
+                        intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
+                        task_example.add_utterance_features(
+                            intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
+                        )
+                        task_example.add_intents(user_frame)
+                        examples.append(task_example)
                     
-                # if model_task == 1:
-                #     for slot_id, slot in enumerate(schemas.get_service_schema(service).slots):
-                #         task_example = base_example.make_copy()
-                #         task_example.task_mask[model_task] = 1
-                #         task_example.requested_slot_id = slot_id
-                #         task_example.example_id += f"-{model_task}-{slot_id}-0"
-                #         task_example.example_id_num.extend([model_task, slot_id, 0])
-                #         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                #         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                #         task_example.add_utterance_features(
-                #             slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
-                #         )
-                #         task_example.add_requested_slots(user_frame)   
-                #         examples.append(task_example) 
+                if model_task == 1:
+                    for slot_id, slot in enumerate(schemas.get_service_schema(service).slots):
+                        task_example = base_example.make_copy()
+                        task_example.task_mask[model_task] = 1
+                        task_example.requested_slot_id = slot_id
+                        task_example.example_id += f"-{model_task}-{slot_id}-0"
+                        task_example.example_id_num.extend([model_task, slot_id, 0])
+                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                        task_example.add_utterance_features(
+                            slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
+                        )
+                        task_example.add_requested_slots(user_frame)   
+                        examples.append(task_example) 
                 if model_task == 2:
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
                         task_example = base_example.make_copy()
@@ -407,7 +407,7 @@ class SGDDataProcessor(object):
                         examples.append(task_example)
                         old_example = task_example
 
-                        if task_example.noncategorical_slot_status == 1:
+                        if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
                             task_example = task_example.make_copy()
                             task_example.task_mask[5] = 1
                             assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])

@@ -481,7 +481,7 @@ def get_predicted_intent_baseline(predictions, intents):
     """
     returns intent name with maximum score
     """
-    assert(len(predictions) == intents)
+    assert(len(predictions) == len(intents))
     active_intent_id=max(predictions, key=lambda k: predictions[k][0]['intent_status'])
     return (
         intents[active_intent_id]
@@ -491,7 +491,7 @@ def get_requested_slot_baseline(predictions, slots):
     """
     returns list of slots which are predicted to be requested
     """
-    active_indices = [k[0] for k in predictions if predictions[k][0]["req_slot_status"] > REQ_SLOT_THRESHOLD]
+    active_indices = [k for k in predictions if predictions[k][0]["req_slot_status"] > REQ_SLOT_THRESHOLD]
     requested_slots = list(map(lambda k: slots[k], active_indices))
     return requested_slots
 
@@ -506,9 +506,9 @@ def set_cat_slot_baseline(predictions_status, predictions_value, cat_slots, cat_
         elif slot_status == STATUS_ACTIVE:
             tmp = predictions_value[slot_idx]
             value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-            out_dict[slot] = cat_slot_values[value_idx]
+            out_dict[slot] = cat_slot_values[slot][value_idx]
 
-def set_noncat_slot_baseline(predictions_status, non_cat_slots, user_utterance, out_dict):
+def set_noncat_slot_baseline(predictions_status, predictions_value, non_cat_slots, user_utterance, out_dict):
     """
     write predicted slot and values into out_dict 
     """
@@ -517,10 +517,10 @@ def set_noncat_slot_baseline(predictions_status, non_cat_slots, user_utterance, 
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_ACTIVE:
-            tok_start_idx = predictions_status[slot_idx][0]["noncat_slot_start"]
-            tok_end_idx = predictions_status[slot_idx][0]["noncat_slot_end"]
-            ch_start_idx = predictions_status[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
-            ch_end_idx = predictions_status[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
+            tok_start_idx = predictions_value[slot_idx][0]["noncat_slot_start"]
+            tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
+            ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
+            ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
             # if ch_start_idx < 0 and ch_end_idx < 0:
             #     # Add span from the system utterance.
             #     out_dict[slot] = system_utterance[-ch_start_idx - 1 : -ch_end_idx]
@@ -563,15 +563,17 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
                 state = {}
                 
                 # Add prediction for active intent. No Offset is subtracted since schema has now NONE intent at index 0
-                state["active_intent"] = "NONE" #get_predicted_intent_baseline(predictions=predictions[0], intents=service_schema.intents)
+                state["active_intent"] = get_predicted_intent_baseline(predictions=predictions[0], intents=service_schema.intents)
+                # state["active_intent"] = "NONE"
                 # Add prediction for requested slots.
-                state["requested_slots"] = [] # get_requested_slot_baseline(predictions=predictions[1], slots=service_schema.slots)
+                state["requested_slots"] = get_requested_slot_baseline(predictions=predictions[1], slots=service_schema.slots)
+                # state["requested_slots"] = []
 
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
                 set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, out_dict=slot_values)
-                # Non-categorical slots.
-                set_noncat_slot_baseline(predictions_status=predictions[4], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
+                # # Non-categorical slots.
+                set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
                 # Create a new dict to avoid overwriting the state in previous turns
                 # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}
