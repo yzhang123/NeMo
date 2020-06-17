@@ -236,6 +236,9 @@ parser.add_argument(
     "--checkpoints_to_keep", default=1, type=int, help="The number of last checkpoints to keep",
 )
 
+parser.add_argument("--exp_name", default="SGD_Baseline", type=str)
+parser.add_argument("--project", default="SGD", type=str)
+
 args = parser.parse_args()
 logging.info(args)
 
