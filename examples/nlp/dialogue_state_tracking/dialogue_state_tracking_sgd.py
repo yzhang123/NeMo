@@ -30,7 +30,7 @@ from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callbac
 from nemo.collections.nlp.data.datasets.sgd_dataset.schema_processor import SchemaPreprocessor
 from nemo.collections.nlp.data.datasets.sgd_dataset import schema
 from nemo.collections.nlp.nm.trainables import SGDDecoderNM, SGDEncoderNM
-from nemo.core import Backend, CheckpointCallback, EvaluatorCallback, NeuralModuleFactory, SimpleLossLoggerCallback
+from nemo.core import Backend, CheckpointCallback, EvaluatorCallback, NeuralModuleFactory, SimpleLossLoggerCallback, WandbCallback
 from nemo.utils import logging
 from nemo.utils.lr_policies import get_lr_policy
 
@@ -418,6 +418,8 @@ def get_eval_callback(eval_dataset):
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,
+        wandb_name=args.exp_name,
+        wandb_project=args.project,
     )
     return eval_callback
 
@@ -431,13 +433,21 @@ ckpt_callback = CheckpointCallback(
     folder=nf.checkpoint_dir, epoch_freq=args.save_epoch_freq, step_freq=args.save_step_freq, checkpoints_to_keep=1
 )
 
+wand_callback = WandbCallback(
+    train_tensors=train_tensors,
+    wandb_name=args.exp_name,
+    wandb_project=args.project,
+    update_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
+    args=args,
+)
+
 lr_policy_fn = get_lr_policy(
     args.lr_policy, total_steps=args.num_epochs * steps_per_epoch, warmup_ratio=args.lr_warmup_proportion
 )
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback] + eval_callbacks, #, ckpt_callback] + eval_callbacks,
+    callbacks=[train_callback, wand_callback] + eval_callbacks, #, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={
