@@ -160,14 +160,16 @@ def compare_slot_values(slot_values_ref, slot_values_hyp, service, no_fuzzy_matc
         if slot_name in slot_values_ref:  # REF=active
             slot_active.append(True)
             if slot_name in slot_values_hyp:  # HYP=active, apply matching
+                best_cor = 0
                 value_ref_list = slot_values_ref[slot_name]
-                value_hyp = slot_values_hyp[slot_name][0]
-                if slot["is_categorical"]:
-                    cor = float(value_ref_list[0] == value_hyp)
-                else:
-                    cor = noncat_slot_value_match(value_ref_list, value_hyp, no_fuzzy_match)
-
-                list_cor.append(cor)
+                for value_ref in value_ref_list:
+                    value_hyp = slot_values_hyp[slot_name][0]
+                    if slot["is_categorical"]:
+                        cor = float(value_ref == value_hyp)
+                    else:
+                        cor = noncat_slot_value_match(value_ref_list, value_hyp, no_fuzzy_match)
+                    best_cor = max(cor, best_cor)
+                list_cor.append(best_cor)
             else:  # HYP=off
                 list_cor.append(0.0)
         else:  # REF=off

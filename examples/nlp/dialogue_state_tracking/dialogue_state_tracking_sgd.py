@@ -450,7 +450,7 @@ lr_policy_fn = get_lr_policy(
 
 nf.train(
     tensors_to_optimize=train_tensors,
-    callbacks=[train_callback, wand_callback] + eval_callbacks, #, ckpt_callback] + eval_callbacks,
+    callbacks=[train_callback, wand_callback, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
     optimization_params={
