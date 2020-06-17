@@ -529,7 +529,7 @@ def set_noncat_slot_baseline(predictions_status, predictions_value, non_cat_slot
                 out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
 
 
-def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
+def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=False):
     """Update labels in a dialogue based on model predictions.
   Args:
     dialog: A json object containing dialogue whose labels are to be updated.
@@ -572,6 +572,33 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
                 set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, out_dict=slot_values)
+
+                # debugging info processing
+                # if predictions["cat_slot_status_GT"][slot_idx] != predictions["cat_slot_status"][slot_idx] or (
+                #     predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]
+                #     and predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF
+                #     and extracted_value not in true_state['slot_values'][slot]
+                # ):
+                #     categorical_slots_dict[slot] = (
+                #         predictions["cat_slot_status_GT"][slot_idx],
+                #         predictions["cat_slot_status"][slot_idx],
+                #         predictions["cat_slot_status_p"][slot_idx],
+                #         service_schema.get_categorical_slot_values(slot)[predictions["cat_slot_value"][slot_idx]],
+                #         service_schema.get_categorical_slot_values(slot)[
+                #             predictions["cat_slot_value_GT"][slot_idx]
+                #         ],
+                #         extracted_value,
+                #         predictions["cat_slot_value_p"][slot_idx],
+                #     )
+
+                # if predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]:
+                #     cat_slot_status_acc += 1
+                # if predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF:
+                #     cat_slot_value_num += 1
+                #     if extracted_value in true_state['slot_values'][slot]:
+                #         cat_slot_value_acc += 1
+
+
                 # # Non-categorical slots.
                 set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
                 # Create a new dict to avoid overwriting the state in previous turns
@@ -613,7 +640,7 @@ def write_predictions_to_file(
             pred_dialogs = []
             for d in dialogs:
                 if state_tracker == 'baseline':
-                    pred_dialog = get_predicted_dialog_baseline(d, all_predictions, schemas)
+                    pred_dialog = get_predicted_dialog_baseline(d, all_predictions, schemas, eval_debug)
                 elif state_tracker == 'nemotracker':
                     pred_dialog = get_predicted_dialog_nemotracker(
                         d, all_predictions, schemas, eval_debug, in_domain_services
