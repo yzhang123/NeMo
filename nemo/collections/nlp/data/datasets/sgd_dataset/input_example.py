@@ -267,6 +267,23 @@ class InputExample(object):
         new_example.categorical_slot_value_status = self.categorical_slot_value_status
         return new_example
 
+    def make_copy_of_non_categorical_features(self):
+        """Make a copy of the current example with utterance features."""
+        new_example = self.make_copy()
+        new_example.noncategorical_slot_id = self.noncategorical_slot_id
+        new_example.noncategorical_slot_status = self.noncategorical_slot_status
+        new_example.utterance_ids = list(self.utterance_ids)
+        new_example.utterance_segment = list(self.utterance_segment)
+        new_example.utterance_mask = list(self.utterance_mask)
+        new_example.start_char_idx = list(self.start_char_idx)
+        new_example.end_char_idx = list(self.end_char_idx)
+        new_example.user_utterance = self.user_utterance
+        new_example.system_utterance = self.system_utterance
+        new_example.noncategorical_slot_status = self.noncategorical_slot_status
+        new_example.noncategorical_slot_value_start = self.noncategorical_slot_value_start
+        new_example.noncategorical_slot_value_end = self.noncategorical_slot_value_end
+        return new_example
+
 
     def add_categorical_slots(self, state_update):
         """Add features for categorical slots."""

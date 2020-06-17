@@ -495,10 +495,11 @@ def get_requested_slot_baseline(predictions, slots):
     requested_slots = list(map(lambda k: slots[k], active_indices))
     return requested_slots
 
-def set_cat_slot_baseline(predictions_status, predictions_value, cat_slots, cat_slot_values, out_dict):
+def set_cat_slot_baseline(predictions_status, predictions_value, cat_slots, cat_slot_values):
     """
     write predicted slot and values into out_dict 
     """
+    out_dict = {}
     for slot_idx, slot in enumerate(cat_slots):
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
         if slot_status == STATUS_DONTCARE:
@@ -507,11 +508,13 @@ def set_cat_slot_baseline(predictions_status, predictions_value, cat_slots, cat_
             tmp = predictions_value[slot_idx]
             value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
             out_dict[slot] = cat_slot_values[slot][value_idx]
+    return out_dict
 
-def set_noncat_slot_baseline(predictions_status, predictions_value, non_cat_slots, user_utterance, out_dict):
+def set_noncat_slot_baseline(predictions_status, predictions_value, non_cat_slots, user_utterance):
     """
     write predicted slot and values into out_dict 
     """
+    out_dict = {}
     for slot_idx, slot in enumerate(non_cat_slots):
         slot_status = predictions_status[slot_idx][0]["noncat_slot_status"]
         if slot_status == STATUS_DONTCARE:
@@ -527,6 +530,7 @@ def set_noncat_slot_baseline(predictions_status, predictions_value, non_cat_slot
             if ch_start_idx > 0 and ch_end_idx > 0:
                 # Add span from the user utterance.
                 out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
+    return out_dict
 
 
 def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=False):
@@ -551,6 +555,10 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=F
             system_user_utterance = system_utterance + ' ' + user_utterance
             turn_id = "{:02d}".format(turn_idx)
             for frame in turn["frames"]:
+                
+                debug_categorical_slots_dict = OrderedDict()
+                debug_non_categorical_slots_dict = OrderedDict()
+
                 predictions = all_predictions[(dialog_id, turn_id, frame["service"])]
                 slot_values = all_slot_values[frame["service"]]
                 service_schema = schemas.get_service_schema(frame["service"])
@@ -571,15 +579,16 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=F
 
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
-                set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, out_dict=slot_values)
-
+                cat_out_dict = set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values)
+                for k, v in cat_out_dict.items():
+                    slot_values[k] = v
                 # debugging info processing
                 # if predictions["cat_slot_status_GT"][slot_idx] != predictions["cat_slot_status"][slot_idx] or (
                 #     predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]
                 #     and predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF
                 #     and extracted_value not in true_state['slot_values'][slot]
                 # ):
-                #     categorical_slots_dict[slot] = (
+                #     debug_categorical_slots_dict[slot] = (
                 #         predictions["cat_slot_status_GT"][slot_idx],
                 #         predictions["cat_slot_status"][slot_idx],
                 #         predictions["cat_slot_status_p"][slot_idx],
@@ -600,7 +609,9 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=F
 
 
                 # # Non-categorical slots.
-                set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
+                noncat_out_dict = set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, out_dict=slot_values)
+                for k, v in noncat_out_dict.items():
+                    slot_values[k] = v
                 # Create a new dict to avoid overwriting the state in previous turns
                 # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}
