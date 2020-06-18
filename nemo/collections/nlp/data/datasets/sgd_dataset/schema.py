@@ -55,14 +55,24 @@ class ServiceSchema(object):
         slot_schemas = {s["name"]: s for s in schema_json["slots"]}
         categorical_slot_values = {}
         categorical_slot_value_ids = {}
-        for slot in self._categorical_slots:
+        categorical_slot_ids = {}
+        non_categorical_slot_ids = {}
+        for slot_id, slot in enumerate(self._categorical_slots):
             slot_schema = slot_schemas[slot]
             values = sorted(slot_schema["possible_values"])
             categorical_slot_values[slot] = values
             value_ids = {value: idx for idx, value in enumerate(values)}
             categorical_slot_value_ids[slot] = value_ids
+            categorical_slot_ids[slot] = slot_id
+
+        for slot_id, slot in enumerate(self._non_categorical_slots):
+            non_categorical_slot_ids[slot] = slot_id
+
         self._categorical_slot_values = categorical_slot_values
         self._categorical_slot_value_ids = categorical_slot_value_ids
+
+        self._categorical_slot_ids = categorical_slot_ids
+        self._non_categorical_slot_ids = non_categorical_slot_ids
 
     @property
     def schema_json(self):
@@ -139,6 +149,11 @@ class ServiceSchema(object):
     def get_categorical_slot_value_id(self, slot, value):
         return self._categorical_slot_value_ids[slot][value]
 
+    def get_categorical_slot_id(self, slot):
+        return self._categorical_slot_ids[slot]
+        
+    def get_non_categorical_slot_id(self, slot):
+        return self._non_categorical_slot_ids[slot]
 
 class Schema(object):
     """Wrapper for schemas for all services in a dataset."""

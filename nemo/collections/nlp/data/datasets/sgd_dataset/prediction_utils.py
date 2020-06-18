@@ -582,30 +582,39 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=F
                 cat_out_dict = set_cat_slot_baseline(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values)
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
-                # debugging info processing
-                # if predictions["cat_slot_status_GT"][slot_idx] != predictions["cat_slot_status"][slot_idx] or (
-                #     predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]
-                #     and predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF
-                #     and extracted_value not in true_state['slot_values'][slot]
-                # ):
-                #     debug_categorical_slots_dict[slot] = (
-                #         predictions["cat_slot_status_GT"][slot_idx],
-                #         predictions["cat_slot_status"][slot_idx],
-                #         predictions["cat_slot_status_p"][slot_idx],
-                #         service_schema.get_categorical_slot_values(slot)[predictions["cat_slot_value"][slot_idx]],
-                #         service_schema.get_categorical_slot_values(slot)[
-                #             predictions["cat_slot_value_GT"][slot_idx]
-                #         ],
-                #         extracted_value,
-                #         predictions["cat_slot_value_p"][slot_idx],
-                #     )
 
-                # if predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]:
-                #     cat_slot_status_acc += 1
-                # if predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF:
-                #     cat_slot_value_num += 1
-                #     if extracted_value in true_state['slot_values'][slot]:
-                #         cat_slot_value_acc += 1
+
+                # # debugging info processing
+
+                # for slot_idx, slot in enumerate(service_schema.categorical_slots):
+                #     slot_idx = service_schema.get_categorical_slot_id(slot)
+                #     value_idx = service_schema.get_categorical_slot_value_id(slot, value)
+                #     slot_status = predictions[2][slot_idx][0]["cat_slot_status"]
+
+
+                #     if predictions[2][slot_idx][0]["cat_slot_status_GT"] != slot_status or (
+                #         predictions[2][slot_idx][0]["cat_slot_status_GT"] != STATUS_OFF
+                #         and max(tmp, key=lambda k: predictions[3][slot_idx][k]['cat_slot_value_status'][0].item()) != predictions[2][slot_idx][0]["cat_slot_value_id_GT"]
+                #     ):
+
+                #         debug_categorical_slots_dict[slot] = (
+                #             predictions[2][slot_idx][0]["cat_slot_status_GT"],
+                #             slot_status,
+                #             predictions["cat_slot_status_p"][slot_idx],
+                #             service_schema.get_categorical_slot_values(slot)[predictions["cat_slot_value"][slot_idx]],
+                #             service_schema.get_categorical_slot_values(slot)[
+                #                 predictions["cat_slot_value_GT"][slot_idx]
+                #             ],
+                #             extracted_value,
+                #             predictions["cat_slot_value_p"][slot_idx],
+                #         )
+
+                #     if predictions["cat_slot_status_GT"][slot_idx] == predictions["cat_slot_status"][slot_idx]:
+                #         cat_slot_status_acc += 1
+                #     if predictions["cat_slot_status_GT"][slot_idx] != STATUS_OFF:
+                #         cat_slot_value_num += 1
+                #         if extracted_value in true_state['slot_values'][slot]:
+                #             cat_slot_value_acc += 1
 
 
                 # # Non-categorical slots.
