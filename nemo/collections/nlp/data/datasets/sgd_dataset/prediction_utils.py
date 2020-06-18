@@ -609,7 +609,7 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas, eval_debug=F
 
 
                 # # Non-categorical slots.
-                noncat_out_dict = set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance)
+                noncat_out_dict = set_noncat_slot_baseline(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance)
                 for k, v in noncat_out_dict.items():
                     slot_values[k] = v
                 # Create a new dict to avoid overwriting the state in previous turns
