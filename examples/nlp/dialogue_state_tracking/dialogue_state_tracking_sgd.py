@@ -125,12 +125,6 @@ parser.add_argument(
     help="The output directory where the model checkpoints will be written.",
 )
 parser.add_argument(
-    "--schema_embedding_dir",
-    type=str,
-    default='schema_embedding_dir',
-    help="Directory where .npy file for embedding of entities (slots, values, intents) in the dataset_split's schema are stored.",
-)
-parser.add_argument(
     "--no_overwrite_schema_emb_files",
     action="store_false",
     help="Whether to generate a new file saving the dialogue examples.",
