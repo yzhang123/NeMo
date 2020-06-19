@@ -229,6 +229,9 @@ parser.add_argument(
 parser.add_argument(
     "--checkpoints_to_keep", default=1, type=int, help="The number of last checkpoints to keep",
 )
+parser.add_argument(
+    "--num2str", action="store_true", help="make categorical values that are numbers in text to string, e.g. 2-> 2 two",
+)
 
 parser.add_argument("--exp_name", default="SGD_Baseline", type=str)
 parser.add_argument("--project", default="SGD", type=str)
@@ -302,6 +305,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
     tokenizer=tokenizer,
     schemas=schemas,
     schema_config=schema_config,
+    num2str=args.num2str,
     overwrite_dial_files=args.overwrite_dial_files,
 )
 

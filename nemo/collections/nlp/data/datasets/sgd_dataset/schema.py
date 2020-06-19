@@ -143,7 +143,7 @@ class ServiceSchema(object):
         return self._non_categorical_slots[slot_id]
 
     def get_categorical_slot_value_from_id(self, slot_id, value_id):
-        slot = self.categorical_slots[slot_id]
+        slot = self._categorical_slots[slot_id]
         return self._categorical_slot_values[slot][value_id]
 
     def get_categorical_slot_value_id(self, slot, value):

@@ -25,6 +25,7 @@ import json
 import os
 import pickle
 import re
+import inflect
 
 import numpy as np
 import torch
@@ -50,7 +51,7 @@ class SGDDataProcessor(object):
     """Data generator for SGD dialogues."""
 
     def __init__(
-        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False,
+        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False, num2str=False,
     ):
         """
         Constructs SGD8DataProcessor
@@ -64,6 +65,7 @@ class SGDDataProcessor(object):
         """
         self.data_dir = data_dir
         self.dialogues_examples_dir = dialogues_example_dir
+        self._num2str=num2str
 
         self._task_name = task_name
         # {'MAX_NUM_CAT_SLOT': 6, 'MAX_NUM_NONCAT_SLOT': 12, 'MAX_NUM_VALUE_PER_CAT_SLOT': 12, 'MAX_NUM_INTENT': 4, 'EMBEDDING_DIMENSION': 768, 'MAX_SEQ_LENGTH': 80}
@@ -104,7 +106,7 @@ class SGDDataProcessor(object):
             self.dial_files[(task_name, dataset)] = dial_file
 
             dialog_paths = SGDDataProcessor.get_dialogue_files(data_dir, dataset, task_name)
-            dialogs = SGDDataProcessor.load_dialogues(dialog_paths)
+            dialogs = SGDDataProcessor.load_dialogues(dialog_paths, num2str=False)
             for dialog in dialogs:
                 self._seen_services[dataset].update(set(dialog['services']))
 
@@ -183,7 +185,7 @@ class SGDDataProcessor(object):
         dialog_paths = [
             os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
         ]
-        dialogs = SGDDataProcessor.load_dialogues(dialog_paths)
+        dialogs = SGDDataProcessor.load_dialogues(dialog_paths, num2str=self._num2str)
 
         examples = []
         slot_carryover_candlist = collections.defaultdict(int)
@@ -531,7 +533,44 @@ class SGDDataProcessor(object):
         return seq_tok
 
     @classmethod
-    def load_dialogues(cls, dialog_json_filepaths):
+    def convert_number2string(cls, dialogs):
+        p = inflect.engine()
+        for dialog_idx, dialog in enumerate(dialogs):
+            for turn_idx, turn in enumerate(dialog["turns"]):
+                utt_orig = turn["utterance"]
+                int_list = [(num.start(0), num.end(0)) for num in re.finditer("\\d+", utt_orig)]
+                # int_list = [s for s in utt_orig.split() if s.isdigit()]
+                valid_int_list = []
+                for (start_idx, end_idx) in int_list[-1::-1]:
+                    inside_noncat = False
+                    for frame in turn["frames"]:
+                        for slot in frame["slots"]:
+                            if (start_idx >= slot["start"] and start_idx < slot["exclusive_end"]) or (
+                                end_idx > slot["start"] and end_idx <= slot["exclusive_end"]
+                            ):
+                                inside_noncat = True
+                                break
+                    if not inside_noncat:
+                        valid_int_list.append((start_idx, end_idx, utt_orig[start_idx:end_idx]))
+
+                for (start_idx, end_idx, num) in valid_int_list:
+                    turn["utterance"] = (
+                        turn["utterance"][: start_idx + len(num)]
+                        + " "
+                        + p.number_to_words(int(num))
+                        + turn["utterance"][start_idx + len(num) :]
+                    )
+                if turn["utterance"] != utt_orig:
+                    # print("Replaced cat number!")
+                    for frame in turn["frames"]:
+                        for slot in frame["slots"]:
+                            slot_value = utt_orig[slot["start"] : slot["exclusive_end"]]
+                            slot["start"] = turn["utterance"].index(slot_value, slot["start"])
+                            slot["exclusive_end"] = slot["start"] + len(slot_value)
+        return dialogs
+
+    @classmethod
+    def load_dialogues(cls, dialog_json_filepaths, num2str=False):
         """
         Obtain the list of all dialogues from specified json files.
         Args:
@@ -544,6 +583,8 @@ class SGDDataProcessor(object):
             with open(dialog_json_filepath, 'r') as f:
                 dialogs.extend(json.load(f))
                 f.close()
+        if num2str:
+            dialogs = SGDDataProcessor.convert_number2string(dialogs)
         return dialogs
 
     @classmethod
