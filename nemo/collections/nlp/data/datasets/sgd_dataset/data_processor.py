@@ -369,6 +369,7 @@ class SGDDataProcessor(object):
                                 task_example.task_mask[3] = 1
                                 assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
                                 task_example.categorical_slot_id = slot_id
+                                task_example.categorical_slot_value_id = value_id
                                 task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
                                 task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
                                 slot_description = slot + " " + value # add slot description
@@ -378,8 +379,6 @@ class SGDDataProcessor(object):
                                 )
                                 # task_example.add_categorical_slots(state_update)
                                 assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
-                                assert(task_example.categorical_slot_value_id == old_example.categorical_slot_value_id)
-                                assert(task_example.categorical_slot_value_status == old_example.categorical_slot_value_status)
                                 examples.append(task_example)
                     
                 if model_task == 4: # noncat slot status

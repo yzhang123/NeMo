@@ -300,10 +300,8 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_DONTCARE
         else:
             self.categorical_slot_status = STATUS_ACTIVE
-            self.categorical_slot_value_id = self.service_schema.get_categorical_slot_value_id(
-                slot, values[0]
-            )
-            self.categorical_slot_value_status = STATUS_ACTIVE
+            self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
+                slot, values[0])
 
     def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for non-categorical slots."""
