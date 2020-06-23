@@ -263,8 +263,6 @@ class InputExample(object):
         new_example = self.make_copy()
 
         new_example.categorical_slot_status = self.categorical_slot_status
-        new_example.categorical_slot_value_id = self.categorical_slot_value_id
-        new_example.categorical_slot_value_status = self.categorical_slot_value_status
         return new_example
 
     def make_copy_of_non_categorical_features(self):

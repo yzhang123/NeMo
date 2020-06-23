@@ -377,7 +377,7 @@ class SGDDataProcessor(object):
                                 task_example.add_utterance_features(
                                     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
                                 )
-                                # task_example.add_categorical_slots(state_update)
+                                task_example.add_categorical_slots(state_update)
                                 assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
                                 examples.append(task_example)
                     
