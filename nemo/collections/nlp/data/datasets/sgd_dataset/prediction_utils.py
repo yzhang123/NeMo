@@ -55,7 +55,6 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
             tmp = predictions_value[slot_idx]
             value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
             value_prob = max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
-            logging.debug(f"CAT value_prob {value_prob}")
             if sys_slots_agg is None or value_prob > cat_value_thresh:
                 out_dict[slot] = cat_slot_values[slot][value_idx]
             elif slot in sys_slots_agg:

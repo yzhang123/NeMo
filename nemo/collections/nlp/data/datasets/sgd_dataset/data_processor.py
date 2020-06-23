@@ -363,8 +363,7 @@ class SGDDataProcessor(object):
                         old_example = task_example
 
                         for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
-                            if dataset_split != 'train' or task_example.categorical_slot_value_status == 1:
-                            # if task_example.categorical_slot_value_status == 1:
+                            if dataset_split != 'train' or task_example.categorical_slot_status == 1:
                                 task_example = old_example.make_copy_of_categorical_features()
                                 task_example.task_mask[3] = 1
                                 assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
