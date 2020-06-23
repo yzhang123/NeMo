@@ -207,4 +207,13 @@ class SGDDialogueStateLossNM(LossNM):
         else:
             batch_size = logit_intent_status.shape[0]
             total_loss = total_loss / batch_size
+
+        if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
+            logging.info("intent_loss: {}".format(intent_loss))
+            logging.info("requested_slot_loss: {}".format(requested_slot_loss))
+            logging.info("noncat_slot_status_loss: {}".format(noncat_slot_status_loss))
+            logging.info("span_start_loss: {}".format(span_start_loss))
+            logging.info("span_end_loss: {}".format(span_end_loss))
+            logging.info("cat_slot_status_loss: {}".format(cat_slot_status_loss))
+            logging.info("cat_slot_value_status_loss: {}".format(cat_slot_value_status_loss))
         return total_loss
