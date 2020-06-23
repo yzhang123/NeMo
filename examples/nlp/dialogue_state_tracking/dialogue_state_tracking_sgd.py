@@ -200,6 +200,8 @@ parser.add_argument(
     "--enable_pin_memory", action="store_true", help="Enables the pin_memory feature of Pytroch's DataLoader",
 )
 
+parser.add_argument("--cat_value_thresh", default=0.0, type=float)
+parser.add_argument("--non_cat_value_thresh", default=0.0, type=float)
 parser.add_argument(
     "--state_tracker",
     type=str,
@@ -416,6 +418,8 @@ def get_eval_callback(eval_dataset):
             schemas,
             args.joint_acc_across_turn,
             args.no_fuzzy_match,
+            args.cat_value_thresh,
+            args.non_cat_value_thresh
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,

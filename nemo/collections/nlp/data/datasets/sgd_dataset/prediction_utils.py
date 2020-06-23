@@ -35,16 +35,14 @@ from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import (
 
 REQ_SLOT_THRESHOLD = 0.5
 
-CAT_VALUE_THRESHOLD = 1.0
-NONCAT_VALUE_THRESHOLD = 1.0
 
 # MIN_SLOT_RELATION specifes the minimum number of relations between two slots in the training dialogues to get considered for carry-over
 MIN_SLOT_RELATION = 25
 
-__all__ = ['get_predicted_dialog_baseline', 'write_predictions_to_file', 'get_predicted_dialog_nemotracker']
+__all__ = ['get_predicted_dialog', 'write_predictions_to_file']
 
 
-def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg):
+def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg, cat_value_thresh):
     """
     write predicted slot and values into out_dict 
     """
@@ -57,14 +55,14 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
             tmp = predictions_value[slot_idx]
             value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
             value_prob = max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
-            if sys_slots_agg is None or value_prob > CAT_VALUE_THRESHOLD:
+            if sys_slots_agg is None or value_prob > cat_value_thresh:
                 out_dict[slot] = cat_slot_values[slot][value_idx]
             elif slot in sys_slots_agg:
                 # retrieval 
                 out_dict[slot] = sys_slots_agg[slot]
     return out_dict
 
-def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_utterance, sys_slots_agg):
+def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_utterance, sys_slots_agg, non_cat_value_thresh):
     """
     write predicted slot and values into out_dict 
     """
@@ -75,7 +73,7 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_ACTIVE:
             value_prob = predictions_value[slot_idx][0]["noncat_slot_p"]
-            if sys_slots_agg is None or value_prob > NONCAT_VALUE_THRESHOLD:
+            if sys_slots_agg is None or value_prob > non_cat_value_thresh:
                 tok_start_idx = predictions_value[slot_idx][0]["noncat_slot_start"]
                 tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
                 ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
@@ -92,7 +90,7 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
 
 
 
-def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker='baseline'):
+def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh):
     # Overwrite the labels in the turn with the predictions from the model. For
     # test set, these labels are missing from the data and hence they are added.
     dialog_id = dialog["dialogue_id"]
@@ -102,16 +100,15 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker='baseli
         sys_slots_agg = defaultdict(OrderedDict)
     all_slot_values = defaultdict(dict)
     for turn_idx, turn in enumerate(dialog["turns"]):
-        if state_tracker == 'nemotracker':
-            if turn["speaker"] == "SYSTEM":
-                # sys_slots_last = defaultdict(OrderedDict)
-                for frame in turn["frames"]:
-                    if frame["service"] not in sys_slots_agg:
-                        sys_slots_agg[frame["service"]] = OrderedDict()
-                    for action in frame["actions"]:
-                        if action["slot"] and len(action["values"]) > 0:
-                            sys_slots_agg[frame["service"]][action["slot"]] = action["values"][0]
-        elif turn["speaker"] == "USER":
+        if turn["speaker"] == "SYSTEM" and state_tracker == 'nemotracker':
+            # sys_slots_last = defaultdict(OrderedDict)
+            for frame in turn["frames"]:
+                if frame["service"] not in sys_slots_agg:
+                    sys_slots_agg[frame["service"]] = OrderedDict()
+                for action in frame["actions"]:
+                    if action["slot"] and len(action["values"]) > 0:
+                        sys_slots_agg[frame["service"]][action["slot"]] = action["values"][0]
+        if turn["speaker"] == "USER":
             user_utterance = turn["utterance"]
             system_utterance = dialog["turns"][turn_idx - 1]["utterance"] if turn_idx else ""
             system_user_utterance = system_utterance + ' ' + user_utterance
@@ -138,12 +135,12 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker='baseli
 
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
-                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None))
+                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
 
                 # # Non-categorical slots.
-                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None))
+                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
                 for k, v in noncat_out_dict.items():
                     slot_values[k] = v
                 # Create a new dict to avoid overwriting the state in previous turns
@@ -176,7 +173,7 @@ def get_requested_slot(predictions, slots):
 
 
 def write_predictions_to_file(
-    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services
+    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services, cat_value_thresh, non_cat_value_thresh
 ):
     """Write the predicted dialogues as json files.
 
@@ -206,7 +203,7 @@ def write_predictions_to_file(
             logging.debug(f'{input_file_path} file is loaded')
             pred_dialogs = []
             for d in dialogs:
-                pred_dialog = get_predicted_dialog(d, all_predictions, schemas, state_tracker)
+                pred_dialog = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh)
                 pred_dialogs.append(pred_dialog)
             f.close()
         input_file_name = os.path.basename(input_file_path)

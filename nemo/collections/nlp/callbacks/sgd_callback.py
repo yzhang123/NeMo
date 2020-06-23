@@ -163,6 +163,8 @@ def eval_epochs_done_callback(
     schemas,
     joint_acc_across_turn,
     no_fuzzy_match,
+    cat_value_thresh=0.0,
+    non_cat_value_thresh=0.0
 ):
     # added for debugging
     in_domain_services = get_in_domain_services(
@@ -182,6 +184,8 @@ def eval_epochs_done_callback(
         state_tracker=state_tracker,
         eval_debug=eval_debug,
         in_domain_services=in_domain_services,
+        cat_value_thresh=cat_value_thresh,
+        non_cat_value_thresh=non_cat_value_thresh
     )
     metrics = evaluate(
         prediction_dir, data_dir, eval_dataset, in_domain_services, joint_acc_across_turn, no_fuzzy_match,
