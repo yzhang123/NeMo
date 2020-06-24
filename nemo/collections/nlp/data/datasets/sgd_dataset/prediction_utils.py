@@ -73,18 +73,16 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_ACTIVE:
             value_prob = predictions_value[slot_idx][0]["noncat_slot_p"]
-            if sys_slots_agg is None or value_prob > non_cat_value_thresh:
-                tok_start_idx = predictions_value[slot_idx][0]["noncat_slot_start"]
-                tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
-                ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
-                ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
-
-                if ch_start_idx > 0 and ch_end_idx > 0:
-                    # Add span from the user utterance.
-                    out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
-            elif slot in sys_slots_agg:
-                # retrieval 
-                out_dict[slot] = sys_slots_agg[slot]
+            tok_start_idx = predictions_value[slot_idx][0]["noncat_slot_start"]
+            tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
+            ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
+            ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
+            if ch_start_idx > 0 and ch_end_idx > 0:
+                # Add span from the user utterance.
+                out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
+            elif sys_slots_agg and slot in sys_slots_agg:
+                    # system retrieval 
+                    out_dict[slot] = sys_slots_agg[slot]
     return out_dict
 
 
@@ -135,7 +133,8 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
 
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
-                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
+                # cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
+                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=None, cat_value_thresh=cat_value_thresh)
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
 
