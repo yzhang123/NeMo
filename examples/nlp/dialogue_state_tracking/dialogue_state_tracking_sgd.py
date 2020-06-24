@@ -87,7 +87,7 @@ parser.add_argument(
 parser.add_argument("--train_batch_size", default=32, type=int, help="Total batch size for training.")
 parser.add_argument("--eval_batch_size", default=8, type=int, help="Total batch size for eval.")
 parser.add_argument("--num_epochs", default=80, type=int, help="Total number of training epochs to perform.")
-
+parser.add_argument("--batches_per_step", default=1, type=int, help="Number of iterations per step.")
 parser.add_argument("--optimizer_kind", default="adam_w", type=str)
 parser.add_argument("--learning_rate", default=1e-4, type=float, help="The initial learning rate for Adam.")
 parser.add_argument("--lr_policy", default="PolynomialDecayAnnealing", type=str)
@@ -384,7 +384,7 @@ def create_pipeline(dataset_split='train'):
             logit_noncat_slot_end
         ]
 
-    steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus))
+    steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.steps_per_epoch))
     return steps_per_epoch, tensors
 
 
@@ -455,6 +455,7 @@ nf.train(
     callbacks=[train_callback, wand_callback, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,
+    batches_per_step=args.batches_per_step,
     optimization_params={
         "num_epochs": args.num_epochs,
         "lr": args.learning_rate,
