@@ -384,7 +384,7 @@ def create_pipeline(dataset_split='train'):
             logit_noncat_slot_end
         ]
 
-    steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.steps_per_epoch))
+    steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.batches_per_step))
     return steps_per_epoch, tensors
 
 
