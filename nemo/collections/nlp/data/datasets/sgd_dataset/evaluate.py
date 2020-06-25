@@ -59,13 +59,13 @@ def get_service_set(schema_path):
     return service_set
 
 
-def get_in_domain_services(schema_path, service_set):
+def get_in_domain_services(schema_path, schema_path_2):
     """Get the set of common services between a schema and set of services.
     Args:
         schema_path (str): path to schema file
         service_set (set): set of services
     """
-    return get_service_set(schema_path) & service_set
+    return get_service_set(schema_path) & get_service_set(schema_path_2)
 
 
 def get_dataset_as_dict(file_path_patterns):
@@ -189,7 +189,6 @@ def get_metrics(dataset_ref, dataset_hyp, service_schemas, in_domain_services, j
                 domain_keys = [ALL_SERVICES, frame_hyp["service"], domain_name]
                 if frame_hyp["service"] in in_domain_services:
                     domain_keys.append(SEEN_SERVICES)
-
                 else:
                     domain_keys.append(UNSEEN_SERVICES)
                 for domain_key in domain_keys:
