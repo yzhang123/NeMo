@@ -229,8 +229,7 @@ class SGDDecoderNM(TrainableNM):
         self.cat_slot_value_layer = projection_module(1, embedding_dim).to(self._device)
 
         # Slot status values: none, dontcare, active.
-        self.cat_slot_status_layer = projection_module(3, embedding_dim).to(self._device)
-        self.noncat_slot_layer = projection_module(3, embedding_dim).to(self._device)
+        self.slot_status_layer = projection_module(3, embedding_dim).to(self._device)
 
         # dim 2 for non_categorical slot - to represent start and end position
         self.noncat_layer1 = nn.Linear(embedding_dim, embedding_dim).to(self._device)
@@ -302,7 +301,7 @@ class SGDDecoderNM(TrainableNM):
         """
 
         # Predict the status of all categorical slots.
-        status_logits = self.cat_slot_status_layer(
+        status_logits = self.slot_status_layer(
             encoded_utterance=encoded_utterance
         )
 
@@ -317,7 +316,7 @@ class SGDDecoderNM(TrainableNM):
         Obtain logits for status and slot spans for non-categorical slots.
         Slot status values: none, dontcare, active
         """
-        status_logits = self.noncat_slot_layer(
+        status_logits = self.slot_status_layer(
             encoded_utterance=encoded_utterance
         )
 
