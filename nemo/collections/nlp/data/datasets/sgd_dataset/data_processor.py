@@ -206,6 +206,13 @@ class SGDDataProcessor(object):
 
         return examples, slots_relation_list
 
+    def _normalize_snake_case(self, str):
+        return ' '.join(str.split('_'))
+
+    def _normalize_camel_case(self, str):
+        return ''.join([' '+i.lower() if i.isupper()  
+               else i for i in str]).lstrip(' ')
+
     def _create_examples_from_dialog(self, dialog, schemas, dataset, slot_carryover_candlist):
         """
         Create examples for every turn in the dialog.
@@ -322,7 +329,8 @@ class SGDDataProcessor(object):
                         task_example.intent_id = intent_id
                         task_example.example_id += f"-{model_task}-{intent_id}-0"
                         task_example.example_id_num.extend([model_task, intent_id, 0])
-                        intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
+                        intent_str = self._normalize_camel_case(intent) if intent != "NONE" else intent
+                        intent_description = intent_str + " " + schemas.get_service_schema(service).intent_descriptions[intent]
                         intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
                         task_example.add_utterance_features(
                             intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
@@ -337,7 +345,7 @@ class SGDDataProcessor(object):
                         task_example.requested_slot_id = slot_id
                         task_example.example_id += f"-{model_task}-{slot_id}-0"
                         task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                        slot_description = self._normalize_snake_case(slot) + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
                             slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
@@ -353,7 +361,7 @@ class SGDDataProcessor(object):
                         task_example.categorical_slot_id = slot_id
                         task_example.example_id += f"-{model_task}-{slot_id}-0"
                         task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                        slot_description = self._normalize_snake_case(slot) + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
                             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
@@ -371,7 +379,7 @@ class SGDDataProcessor(object):
                                 task_example.categorical_slot_value_id = value_id
                                 task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
                                 task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value # add slot description
+                                slot_description = self._normalize_snake_case(slot) + " " + value # add slot description
                                 slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                                 task_example.add_utterance_features(
                                     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
@@ -388,7 +396,7 @@ class SGDDataProcessor(object):
                         task_example.noncategorical_slot_id = slot_id
                         task_example.example_id += f"-{model_task}-{slot_id}-0"
                         task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                        slot_description = self._normalize_snake_case(slot) + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
                             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
