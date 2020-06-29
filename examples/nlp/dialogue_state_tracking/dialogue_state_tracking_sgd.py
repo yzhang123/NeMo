@@ -381,12 +381,14 @@ def create_pipeline(dataset_split='train'):
             logit_cat_slot_value_status,
             logit_noncat_slot_status,
             logit_noncat_slot_start,
-            logit_noncat_slot_end
+            logit_noncat_slot_end,
+            data.categorical_slot_status,
+            data.noncategorical_slot_status,
+            data.categorical_slot_value_status,
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.batches_per_step))
     return steps_per_epoch, tensors
-
 
 steps_per_epoch, train_tensors = create_pipeline()
 logging.info(f'Steps per epoch: {steps_per_epoch}')

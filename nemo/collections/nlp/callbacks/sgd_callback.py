@@ -126,9 +126,9 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     predictions['noncat_alignment_end'] = output['end_char_idx']
 
     # added for debugging
-    # predictions['cat_slot_status_GT'] = output['categorical_slot_status']
-    # predictions['noncat_slot_status_GT'] = output['noncategorical_slot_status']
-    # predictions['cat_slot_value_GT'] = output['categorical_slot_values']
+    predictions['cat_slot_status_GT'] = output['categorical_slot_status']
+    predictions['noncat_slot_status_GT'] = output['noncategorical_slot_status']
+    predictions['cat_slot_value_status_GT'] = output['categorical_slot_value_status']
 
     global_vars['predictions'].extend(combine_predictions_in_example(predictions, batch_size))
 
