@@ -27,6 +27,7 @@ def add_args(parser):
     parser.add_argument("--max_epochs", default=10, type=int, help="Number of training epochs.")
     parser.add_argument(
         "--gpus",
+        type=int,
         default=1,
         help="Select GPU devices. Could be either int, string or list. See https://pytorch-lightning.readthedocs.io/en/latest/multi_gpu.html#select-gpu-devices",
     )
@@ -99,9 +100,6 @@ def add_args(parser):
         default="train_eval",
         choices=["train", "train_eval", "eval", "test"],
         help="Mode of model usage. When using test mode the script is running inference on the data, i.e. no ground-truth labels are required in the dataset.",
-    )
-    parser.add_argument(
-        "--no_data_cache", action='store_true', help="When specified do not load and store cache preprocessed data.",
     )
     parser.add_argument(
         "--doc_stride",
