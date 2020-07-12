@@ -54,16 +54,19 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
         value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
         value_prob = tmp[value_idx]['cat_slot_value_status'][0].item() # max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
 
+        # if status is wrong, or wrong value when gt status is NOT == 0
         if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"] or (predictions_status[slot_idx][0]["cat_slot_status_GT"] != STATUS_OFF and tmp[value_idx]['cat_slot_value_status_GT'] == 0):
             if debug_cat_slots_dict is None:
                 debug_cat_slots_dict = defaultdict(tuple)
             
             value_idx_GT = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status_GT'][0].item())
             value_prob_GT = tmp[value_idx_GT]['cat_slot_value_status'][0].item()
+            gt_status_id = predictions_status[slot_idx][0]["cat_slot_status_GT"].item()
             debug_cat_slots_dict[slot] = (
-                predictions_status[slot_idx][0]["cat_slot_status_GT"].item(),
+                gt_status_id,
                 slot_status.item(),
-                predictions_status[slot_idx][0]["cat_slot_status_p"].item(),
+                predictions_status[slot_idx][0]["cat_slot_status_p"][gt_status_id].item(),
+                predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item(),
                 cat_slot_values[slot][value_idx_GT],
                 value_prob_GT,
                 cat_slot_values[slot][value_idx],
@@ -109,6 +112,11 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
 def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh):
     # Overwrite the labels in the turn with the predictions from the model. For
     # test set, these labels are missing from the data and hence they are added.
+
+    # for debug
+    total_mistakes = 0
+    mistakes_status = 0
+
     dialog_id = dialog["dialogue_id"]
     if state_tracker == "baseline":
         sys_slots_agg = {} 
@@ -156,7 +164,10 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=None, cat_value_thresh=cat_value_thresh)
                 if debug_cat_slots_dict is not None:
                     print(debug_cat_slots_dict)
-                    import ipdb; ipdb.set_trace()
+                    for k, v in debug_cat_slots_dict.items():
+                        total_mistakes += 1
+                        if v[0] == 1 and v[1] == 0 and v[4] == v[6]:
+                            mistakes_status += 1
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
 
@@ -168,7 +179,8 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}
                 frame["state"] = state
-    return dialog
+    print(mistakes_status, total_mistakes)
+    return dialog, total_mistakes, mistakes_status
 
 
 
@@ -218,13 +230,17 @@ def write_predictions_to_file(
     logging.info(f'Predictions for {idx} examples in {eval_dataset} dataset are getting processed.')
 
     # Read each input file and write its predictions.
+    total_mistakes = 0
+    mistakes_status = 0
     for input_file_path in input_json_files:
         with open(input_file_path) as f:
             dialogs = json.load(f)
             logging.debug(f'{input_file_path} file is loaded')
             pred_dialogs = []
             for d in dialogs:
-                pred_dialog = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh)
+                pred_dialog, a, b = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh)
+                total_mistakes += a 
+                mistakes_status += b
                 pred_dialogs.append(pred_dialog)
             f.close()
         input_file_name = os.path.basename(input_file_path)
@@ -232,3 +248,5 @@ def write_predictions_to_file(
         with open(output_file_path, "w") as f:
             json.dump(pred_dialogs, f, indent=2, separators=(",", ": "), sort_keys=True)
             f.close()
+
+    print("final", mistakes_status, total_mistakes)

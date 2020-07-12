@@ -85,14 +85,14 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_cat_slot_status'])
 
     predictions['cat_slot_status'] = torch.argmax(output['logit_cat_slot_status'], axis=-1)
-    predictions['cat_slot_status_p'] = torch.max(cat_slot_status_dist, axis=-1)[0]
+    predictions['cat_slot_status_p'] = cat_slot_status_dist
     predictions['cat_slot_value_status'] = torch.nn.Sigmoid()(output['logit_cat_slot_value_status'])
 
     # For non-categorical slots, the status of each slot and the indices for spans are output.
     noncat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_noncat_slot_status'])
 
     predictions['noncat_slot_status'] = torch.argmax(output['logit_noncat_slot_status'], axis=-1)
-    predictions['noncat_slot_status_p'] = torch.max(noncat_slot_status_dist, axis=-1)[0]
+    predictions['noncat_slot_status_p'] = noncat_slot_status_dist
 
     softmax = torch.nn.Softmax(dim=-1)
     start_scores = softmax(output['logit_noncat_slot_start'])
