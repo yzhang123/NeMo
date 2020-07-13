@@ -31,10 +31,7 @@ def get_huggingface_lm_model(pretrained_model_name, bert_config=None):
     '''
     model_type = pretrained_model_name.split('-')[0]
     if model_type in MODELS:
-        if bert_config:
-            return MODELS[model_type]['class'](config_filename=bert_config)
-        else:
-            return MODELS[model_type]['class'](pretrained_model_name=pretrained_model_name)
+        return MODELS[model_type]['class'](config_filename=bert_config, pretrained_model_name=pretrained_model_name)
     else:
         raise ValueError(f'{pretrained_model_name} is not supported')
 

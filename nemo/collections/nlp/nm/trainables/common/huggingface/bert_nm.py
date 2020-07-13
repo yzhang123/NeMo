@@ -93,6 +93,7 @@ class BERT(TrainableNM):
 
         # Check that only one of pretrained_model_name, config_filename, and
         # vocab_size was passed in
+        
         total = 0
         if pretrained_model_name is not None:
             total += 1
@@ -101,7 +102,7 @@ class BERT(TrainableNM):
         if vocab_size is not None:
             total += 1
 
-        if total != 1:
+        if total < 1:
             raise ValueError(
                 "Only one of pretrained_model_name, vocab_size, "
                 + "or config_filename should be passed into the "
@@ -121,6 +122,9 @@ class BERT(TrainableNM):
                 max_position_embeddings=max_position_embeddings,
             )
             model = BertModel(config)
+        elif pretrained_model_name is not None and config_filename is not None:
+            config = BertConfig.from_json_file(config_filename)
+            model = BertModel.from_pretrained(pretrained_model_name, config=config)
         elif pretrained_model_name is not None:
             model = BertModel.from_pretrained(pretrained_model_name)
         elif config_filename is not None:
