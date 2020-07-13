@@ -23,7 +23,7 @@ https://github.com/google-research/google-research/blob/master/schema_guided_dst
 import argparse
 import math
 import os
-
+import json
 import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.data.datasets.sgd_dataset.data_processor as data_processor
 from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callback, eval_iter_callback
@@ -274,6 +274,14 @@ nf = NeuralModuleFactory(
     files_to_copy=[__file__],
     add_time_to_log_dir=not args.no_time_to_log_dir,
 )
+if args.bert_config:
+    bert_config_json = json.load(open(args.bert_config))
+    bert_config_json['attention_probs_dropout_prob'] = args.dropout
+    bert_config_json['hidden_dropout_prob'] = args.dropout
+    args.bert_config = 'tmp_bert_config.json'
+    with open(args.bert_config, 'w') as f:
+        json.dump(bert_config_json, f)
+
 
 pretrained_bert_model = nemo_nlp.nm.trainables.get_pretrained_lm_model(
     pretrained_model_name=args.pretrained_model_name,
