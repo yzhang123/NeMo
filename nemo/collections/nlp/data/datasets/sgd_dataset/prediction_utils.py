@@ -32,6 +32,7 @@ from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import (
     STATUS_OFF,
     STR_DONTCARE,
 )
+from nemo.collections.nlp.utils.functional_utils import _compute_softmax
 
 REQ_SLOT_THRESHOLD = 0.5
 
@@ -52,7 +53,8 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
         tmp = predictions_value[slot_idx]
         value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-        value_prob = tmp[value_idx]['cat_slot_value_status'][0].item() # max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
+        value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
+        value_prob = value_probs[value_idx] 
 
         # if status is wrong, or wrong value when gt status is NOT == 0
         if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"] or (predictions_status[slot_idx][0]["cat_slot_status_GT"] != STATUS_OFF and tmp[value_idx]['cat_slot_value_status_GT'] == 0):
@@ -60,7 +62,7 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
                 debug_cat_slots_dict = defaultdict(tuple)
             
             value_idx_GT = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status_GT'][0].item())
-            value_prob_GT = tmp[value_idx_GT]['cat_slot_value_status'][0].item()
+            value_prob_GT = value_probs[value_idx_GT]
             gt_status_id = predictions_status[slot_idx][0]["cat_slot_status_GT"].item()
             debug_cat_slots_dict[slot] = (
                 gt_status_id,
@@ -75,12 +77,16 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
 
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
-        elif slot_status == STATUS_ACTIVE:
-            if sys_slots_agg is None or value_prob > cat_value_thresh:
+        elif slot_status == STATUS_OFF:
+
+            if (value_prob+predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item())/2 > cat_value_thresh:
                 out_dict[slot] = cat_slot_values[slot][value_idx]
-            elif slot in sys_slots_agg:
-                # retrieval 
-                out_dict[slot] = sys_slots_agg[slot]
+        elif slot_status == STATUS_ACTIVE:
+            # if sys_slots_agg is None or value_prob > cat_value_thresh:
+            out_dict[slot] = cat_slot_values[slot][value_idx]
+            # elif slot in sys_slots_agg:
+            #     # retrieval 
+            #     out_dict[slot] = sys_slots_agg[slot]
     return out_dict, debug_cat_slots_dict
 
 def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_utterance, sys_slots_agg, non_cat_value_thresh):
