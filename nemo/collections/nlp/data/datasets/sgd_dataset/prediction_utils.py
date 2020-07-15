@@ -53,7 +53,8 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
         tmp = predictions_value[slot_idx]
         value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-        value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
+        # value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
+        value_probs = [v['cat_slot_value_status'][0].item() for k, v in tmp.items()]
         value_prob = value_probs[value_idx] 
 
         # if status is wrong, or wrong value when gt status is NOT == 0
@@ -78,9 +79,9 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_OFF:
-
-            if (value_prob+predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item())/2 > cat_value_thresh:
-                out_dict[slot] = cat_slot_values[slot][value_idx]
+            pass
+            # if (value_prob+predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item())/2 > cat_value_thresh:
+            #     out_dict[slot] = cat_slot_values[slot][value_idx]
         elif slot_status == STATUS_ACTIVE:
             # if sys_slots_agg is None or value_prob > cat_value_thresh:
             out_dict[slot] = cat_slot_values[slot][value_idx]
