@@ -131,11 +131,10 @@ class SGDDataLayer(DataLayerNM):
         batch_size = len(x)
         for i in range(batch_size):
             for j in range(num_components):
-                if j == 3 and self.mask_prob > 0:
+                if j == 5 and self.mask_prob > 0:
                     for k in range(sum(x[i][5])):
                         if random.random() < self.mask_prob:
-                            x[i][j][k] = self.tokenizer.mask_id
-
+                            x[i][j][k] = 0
                 components[j].append(x[i][j])
         
         res = [torch.from_numpy(np.stack(x, axis=0)).to(self._device) for x in components]
