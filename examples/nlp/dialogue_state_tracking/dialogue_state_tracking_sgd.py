@@ -90,6 +90,7 @@ parser.add_argument("--num_epochs", default=80, type=int, help="Total number of 
 parser.add_argument("--batches_per_step", default=1, type=int, help="Number of iterations per step.")
 parser.add_argument("--optimizer_kind", default="adam_w", type=str)
 parser.add_argument("--learning_rate", default=1e-4, type=float, help="The initial learning rate for Adam.")
+parser.add_argument("--mask_prob", default=0.0, type=float, help="The mask probability")
 parser.add_argument("--lr_policy", default="PolynomialDecayAnnealing", type=str)
 parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument(
@@ -318,7 +319,6 @@ dialogues_processor = data_processor.SGDDataProcessor(
     num2str=args.num2str,
     overwrite_dial_files=args.overwrite_dial_files,
 )
-
 # define model pipeline
 sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
 sgd_decoder = SGDDecoderNM(
@@ -334,7 +334,9 @@ def create_pipeline(dataset_split='train'):
         batch_size=args.train_batch_size,
         shuffle=not args.no_shuffle if dataset_split == 'train' else False,
         num_workers=args.num_workers,
+        tokenizer=tokenizer,
         pin_memory=args.enable_pin_memory,
+        mask_prob=args.mask_prob if dataset_split=="train" else 0.0
     )
     data = datalayer()
 

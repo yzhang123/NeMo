@@ -14,7 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
+import torch
+import random
+from torch.utils import data as pt_data
+import numpy as np
+import nemo
 from nemo.backends.pytorch import DataLayerNM
 from nemo.collections.nlp.data.datasets.sgd_dataset.sgd_dataset import SGDDataset
 from nemo.core.neural_types import ChannelType, LabelsType, LengthsType, NeuralType
@@ -78,6 +82,8 @@ class SGDDataLayer(DataLayerNM):
         self,
         dataset_split,
         dialogues_processor,
+        tokenizer=None,
+        mask_prob=0.0,
         dataset_type=SGDDataset,
         shuffle=False,
         batch_size=1,
@@ -93,16 +99,44 @@ class SGDDataLayer(DataLayerNM):
         self._batch_size = batch_size
         self._shuffle = shuffle
         self._pin_memory = pin_memory
+        self.tokenizer = tokenizer
         if num_workers >= 0:
             self._num_workers = num_workers
+
+        if self._placement == nemo.core.DeviceType.AllGpu:
+            sampler = pt_data.distributed.DistributedSampler(self._dataset)
+        else:
+            sampler = None
+
+        self._dataloader = pt_data.DataLoader(
+            dataset=self._dataset, batch_size=batch_size, collate_fn=self._collate_fn, shuffle=sampler is None, sampler=sampler
+        )
+        self.mask_prob = mask_prob
 
     def __len__(self):
         return len(self._dataset)
 
     @property
     def dataset(self):
-        return self._dataset
+        return None
 
     @property
     def data_iterator(self):
-        return None
+        return self._dataloader
+
+    def _collate_fn(self, x):
+
+        num_components = len(x[0])
+        components = [[] for _ in range(num_components)]
+        batch_size = len(x)
+        for i in range(batch_size):
+            for j in range(num_components):
+                if j == 3 and self.mask_prob > 0:
+                    for k in range(sum(x[i][5])):
+                        if random.random() < self.mask_prob:
+                            x[i][j][k] = self.tokenizer.mask_id
+
+                components[j].append(x[i][j])
+        
+        res = [torch.from_numpy(np.stack(x, axis=0)).to(self._device) for x in components]
+        return res
