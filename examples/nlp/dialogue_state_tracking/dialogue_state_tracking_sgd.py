@@ -27,7 +27,6 @@ import json
 import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.data.datasets.sgd_dataset.data_processor as data_processor
 from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callback, eval_iter_callback
-from nemo.collections.nlp.data.datasets.sgd_dataset.schema_processor import SchemaPreprocessor
 from nemo.collections.nlp.data.datasets.sgd_dataset import schema
 from nemo.collections.nlp.nm.trainables import SGDDecoderNM, SGDEncoderNM
 from nemo.core import Backend, CheckpointCallback, EvaluatorCallback, NeuralModuleFactory, SimpleLossLoggerCallback, WandbCallback
@@ -235,7 +234,9 @@ parser.add_argument(
 parser.add_argument(
     "--num2str", action="store_true", help="make categorical values that are numbers in text to string, e.g. 2-> 2 two",
 )
-
+parser.add_argument(
+    "--subsample", action="store_true", help="subsample negative slot statuses to be same as active/dont care ones",
+)
 parser.add_argument("--exp_name", default="SGD_Baseline", type=str)
 parser.add_argument("--project", default="SGD", type=str)
 
@@ -317,6 +318,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
     schemas=schemas,
     schema_config=schema_config,
     num2str=args.num2str,
+    subsample=args.subsample,
     overwrite_dial_files=args.overwrite_dial_files,
 )
 # define model pipeline
