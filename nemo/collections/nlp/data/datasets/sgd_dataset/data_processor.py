@@ -389,7 +389,7 @@ class SGDDataProcessor(object):
                     
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(num_on_slots, len(off_slots))))
+                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
                     else:
                         examples.extend(off_slots)
                     
@@ -436,7 +436,7 @@ class SGDDataProcessor(object):
 
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(num_on_slots, len(off_slots))))
+                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
                     else:
                         examples.extend(off_slots)    
 
