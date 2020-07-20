@@ -283,7 +283,7 @@ class InputExample(object):
         return new_example
 
 
-    def add_categorical_slots(self, state_update):
+    def add_categorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for categorical slots."""
 
         categorical_slots = self.service_schema.categorical_slots
@@ -300,6 +300,23 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_ACTIVE
             self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
                 slot, values[0])
+
+            if slot in user_span_boundaries:
+                start, end = user_span_boundaries[slot]
+            elif slot in system_span_boundaries:
+                start, end = system_span_boundaries[slot]
+            else:
+                # A span may not be found because the value was cropped out or because
+                # the value was mentioned earlier in the dialogue. Since this model
+                # only makes use of the last two utterances to predict state updates,
+                # it will fail in such cases.
+                logging.debug(
+                    f'"Slot values {str(values)} not found in user or system utterance in example with id - {self.example_id}.'
+                )
+                start = 0
+                end = 0
+            self.categorical_slot_value_start = start
+            self.categorical_slot_value_end = end
 
     def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for non-categorical slots."""
