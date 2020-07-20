@@ -427,11 +427,21 @@ class SGDDataProcessor(object):
                             examples.append(task_example)
 
                         if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
-                            task_example = task_example.make_copy_of_non_categorical_features()
+                            task_example = base_example.make_copy()
                             task_example.task_mask[5] = 1
                             assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
                             task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
                             task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
+                            task_example.noncategorical_slot_id = slot_id
+                            task_example.add_utterance_features(
+                                slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
+                            )
+
+                            user_span_boundaries = self._find_subword_indices(
+                                state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens)
+                            )
+                            system_span_boundaries = {}
+                            task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
                             examples.append(task_example)
 
                     if dataset_split == 'train' and subsample:

@@ -179,7 +179,7 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                     slot_values[k] = v
 
                 # # Non-categorical slots.
-                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
+                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
                 for k, v in noncat_out_dict.items():
                     slot_values[k] = v
                 # Create a new dict to avoid overwriting the state in previous turns
