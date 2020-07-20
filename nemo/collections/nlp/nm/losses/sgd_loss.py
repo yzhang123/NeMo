@@ -66,12 +66,14 @@ class SGDDialogueStateLossNM(LossNM):
             "requested_slot_status": NeuralType(('B'), LabelsType()),
             "logit_cat_slot_status": NeuralType(('B'), LogitsType()),
             "categorical_slot_status": NeuralType(('B'), LabelsType()),
-            "logit_cat_slot_value_status": NeuralType(('B'), LogitsType()),
-            "categorical_slot_value_status": NeuralType(('B'), LabelsType()),
+            "logit_cat_slot_start": NeuralType(('B', 'T'), LogitsType()),
+            "logit_cat_slot_end": NeuralType(('B', 'T'), LogitsType()),
             "logit_noncat_slot_status": NeuralType(('B'), LogitsType()),
             "noncategorical_slot_status": NeuralType(('B'), LabelsType()),
             "logit_noncat_slot_start": NeuralType(('B', 'T'), LogitsType()),
             "logit_noncat_slot_end": NeuralType(('B', 'T'), LogitsType()),
+            "categorical_slot_value_start": NeuralType(('B'), LabelsType()),
+            "categorical_slot_value_end": NeuralType(('B'), LabelsType()),
             "noncategorical_slot_value_start": NeuralType(('B'), LabelsType()),
             "noncategorical_slot_value_end": NeuralType(('B'), LabelsType()),
             "task_mask": NeuralType(('B', 'T'), ChannelType()),
@@ -122,12 +124,14 @@ class SGDDialogueStateLossNM(LossNM):
         requested_slot_status,
         logit_cat_slot_status,
         categorical_slot_status,
-        logit_cat_slot_value_status,
-        categorical_slot_value_status,
+        logit_cat_slot_start,
+        logit_cat_slot_end,
         logit_noncat_slot_status,
         noncategorical_slot_status,
         logit_noncat_slot_start,
         logit_noncat_slot_end,
+        categorical_slot_value_start,
+        categorical_slot_value_end,
         noncategorical_slot_value_start,
         noncategorical_slot_value_end,
         task_mask
@@ -149,6 +153,8 @@ class SGDDialogueStateLossNM(LossNM):
                 logit_req_slot_status.squeeze(dim=-1), requested_slot_status
             )
 
+
+        # task 2 
         old_logit_cat_slot_status = logit_cat_slot_status
         logit_cat_slot_status, categorical_slot_status = self._helper(logit_cat_slot_status, categorical_slot_status, task_mask[:, 2])
         if len(categorical_slot_status) == 0:
@@ -158,13 +164,28 @@ class SGDDialogueStateLossNM(LossNM):
                 logit_cat_slot_status,
                 categorical_slot_status,
             )
-        old_logit_cat_slot_value_status = logit_cat_slot_value_status
-        logit_cat_slot_value_status, categorical_slot_value_status = self._helper(logit_cat_slot_value_status, categorical_slot_value_status, task_mask[:, 3])
-        if len(categorical_slot_value_status) == 0:
-            cat_slot_value_status_loss = torch.clamp(torch.max(old_logit_cat_slot_value_status.view(-1)), 0, 0)
-        else:
-            cat_slot_value_status_loss = self._cross_entropy_bin(logit_cat_slot_value_status.squeeze(dim=-1), categorical_slot_value_status)
 
+
+        ## task 3
+        _, max_num_tokens = logit_cat_slot_start.size()
+        old_logit_cat_slot_start = logit_cat_slot_start
+        logit_cat_slot_start, categorical_slot_value_start = self._helper(logit_cat_slot_start, categorical_slot_value_start, task_mask[:, 3])
+        if len(categorical_slot_value_start) == 0:
+            cat_span_start_loss = torch.clamp(torch.max(old_logit_cat_slot_start.view(-1)), 0, 0)
+        else:
+            cat_span_start_loss = self._cross_entropy(logit_cat_slot_start, categorical_slot_value_start)
+
+        
+        old_logit_cat_slot_end = logit_cat_slot_end
+        logit_cat_slot_end, categorical_slot_value_end = self._helper(logit_cat_slot_end, categorical_slot_value_end, task_mask[:, 3])
+        if len(categorical_slot_value_end) == 0:
+            cat_span_end_loss = torch.clamp(torch.max(old_logit_cat_slot_end.view(-1)), 0, 0)
+        else:
+            cat_span_end_loss = self._cross_entropy(logit_cat_slot_end, categorical_slot_value_end)
+
+
+
+        ## task 4
         old_logit_noncat_slot_status = logit_noncat_slot_status
         logit_noncat_slot_status, noncategorical_slot_status = self._helper(logit_noncat_slot_status, noncategorical_slot_status, task_mask[:, 4])
         if len(noncategorical_slot_status) == 0:
@@ -175,30 +196,32 @@ class SGDDialogueStateLossNM(LossNM):
                 noncategorical_slot_status,
             )
 
+        # task 5
         _, max_num_tokens = logit_noncat_slot_start.size()
         old_logit_noncat_slot_start = logit_noncat_slot_start
         logit_noncat_slot_start, noncategorical_slot_value_start = self._helper(logit_noncat_slot_start, noncategorical_slot_value_start, task_mask[:, 5])
         if len(noncategorical_slot_value_start) == 0:
-            span_start_loss = torch.clamp(torch.max(old_logit_noncat_slot_start.view(-1)), 0, 0)
+            noncat_span_start_loss = torch.clamp(torch.max(old_logit_noncat_slot_start.view(-1)), 0, 0)
         else:
-            span_start_loss = self._cross_entropy(logit_noncat_slot_start, noncategorical_slot_value_start)
+            noncat_span_start_loss = self._cross_entropy(logit_noncat_slot_start, noncategorical_slot_value_start)
 
         
         old_logit_noncat_slot_end = logit_noncat_slot_end
         logit_noncat_slot_end, noncategorical_slot_value_end = self._helper(logit_noncat_slot_end, noncategorical_slot_value_end, task_mask[:, 5])
         if len(noncategorical_slot_value_end) == 0:
-            span_end_loss = torch.clamp(torch.max(old_logit_noncat_slot_end.view(-1)), 0, 0)
+            noncat_span_end_loss = torch.clamp(torch.max(old_logit_noncat_slot_end.view(-1)), 0, 0)
         else:
-            span_end_loss = self._cross_entropy(logit_noncat_slot_end, noncategorical_slot_value_end)
+            noncat_span_end_loss = self._cross_entropy(logit_noncat_slot_end, noncategorical_slot_value_end)
 
         losses = {
             "intent_loss": intent_loss,
             "requested_slot_loss": requested_slot_loss,
             "cat_slot_status_loss": cat_slot_status_loss,
-            "cat_slot_value_status_loss": cat_slot_value_status_loss,
+            "cat_span_start_loss": cat_span_start_loss,
+            "cat_span_end_loss": cat_span_end_loss,
             "noncat_slot_status_loss": noncat_slot_status_loss,
-            "span_start_loss": span_start_loss,
-            "span_end_loss": span_end_loss,
+            "noncat_span_start_loss": noncat_span_start_loss,
+            "noncat_span_end_loss": noncat_span_end_loss,
         }
 
         total_loss = sum(losses.values())

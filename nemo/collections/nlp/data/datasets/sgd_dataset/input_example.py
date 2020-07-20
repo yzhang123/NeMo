@@ -103,10 +103,15 @@ class InputExample(object):
         # for a non-categorical slot value.
         self.noncategorical_slot_value_end = 0
 
+        
+
+        self.categorical_slot_value_start = 0 
+        # The index of the ending (inclusive) subword corresponding to the slot span
+        # for a non-categorical slot value.
+        self.categorical_slot_value_end = 0
+
         # Total number of slots present in the service. All slots are included here
         # since every slot can be requested.
-        self.categorical_slot_value_id = 0
-        self.categorical_slot_value_status = STATUS_OFF
         self.requested_slot_id = 0
         # Takes value 1 if the corresponding slot is requested, 0 otherwise.
         self.requested_slot_status = STATUS_OFF
@@ -258,18 +263,26 @@ class InputExample(object):
         )
         return new_example
 
-    def make_copy_of_categorical_features(self):
+    def make_copy_of_non_categorical_features(self):
         """Make a copy of the current example with utterance features."""
         new_example = self.make_copy()
-
-        new_example.categorical_slot_status = self.categorical_slot_status
+        new_example.categorical_slot_id = self.noncategorical_slot_id
+        new_example.categorical_slot_status = self.noncategorical_slot_status
+        new_example.utterance_ids = list(self.utterance_ids)
+        new_example.utterance_segment = list(self.utterance_segment)
+        new_example.utterance_mask = list(self.utterance_mask)
+        new_example.start_char_idx = list(self.start_char_idx)
+        new_example.end_char_idx = list(self.end_char_idx)
+        new_example.user_utterance = self.user_utterance
+        new_example.system_utterance = self.system_utterance
+        new_example.categorical_slot_value_start = self.categorical_slot_value_start
+        new_example.categorical_slot_value_end = self.categorical_slot_value_end
         return new_example
 
     def make_copy_of_non_categorical_features(self):
         """Make a copy of the current example with utterance features."""
         new_example = self.make_copy()
         new_example.noncategorical_slot_id = self.noncategorical_slot_id
-        new_example.noncategorical_slot_status = self.noncategorical_slot_status
         new_example.utterance_ids = list(self.utterance_ids)
         new_example.utterance_segment = list(self.utterance_segment)
         new_example.utterance_mask = list(self.utterance_mask)
@@ -298,9 +311,6 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_DONTCARE
         else:
             self.categorical_slot_status = STATUS_ACTIVE
-            self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
-                slot, values[0])
-
             if slot in user_span_boundaries:
                 start, end = user_span_boundaries[slot]
             elif slot in system_span_boundaries:

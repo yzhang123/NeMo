@@ -205,7 +205,8 @@ class SGDDecoderNM(TrainableNM):
             "logit_intent_status": NeuralType(('B'), LogitsType()),
             "logit_req_slot_status": NeuralType(('B'), LogitsType()),
             "logit_cat_slot_status": NeuralType(('B'), LogitsType()),
-            "logit_cat_slot_value_status": NeuralType(('B'), LogitsType()),
+            "logit_cat_slot_start": NeuralType(('B', 'T'), LogitsType()),
+            "logit_cat_slot_end": NeuralType(('B', 'T'), LogitsType()),
             "logit_noncat_slot_status": NeuralType(('B'), LogitsType()),
             "logit_noncat_slot_start": NeuralType(('B', 'T'), LogitsType()),
             "logit_noncat_slot_end": NeuralType(('B', 'T'), LogitsType()),
@@ -226,11 +227,9 @@ class SGDDecoderNM(TrainableNM):
         self.intent_layer = projection_module(1, embedding_dim).to(self._device)
         self.requested_slots_layer = projection_module(1, embedding_dim).to(self._device)
 
-        self.cat_slot_value_layer = projection_module(1, embedding_dim).to(self._device)
 
         # Slot status values: none, dontcare, active.
-        self.cat_slot_status_layer = projection_module(3, embedding_dim).to(self._device)
-        self.noncat_slot_layer = projection_module(3, embedding_dim).to(self._device)
+        self.noncat_slot_status_layer = projection_module(3, embedding_dim).to(self._device)
 
         # dim 2 for non_categorical slot - to represent start and end position
         self.noncat_layer1 = nn.Linear(embedding_dim, embedding_dim).to(self._device)
@@ -253,10 +252,11 @@ class SGDDecoderNM(TrainableNM):
         logit_req_slot_status = self._get_requested_slots(
             encoded_utterance
         )
-
-        logit_cat_slot_status, logit_cat_slot_value_status = self._get_categorical_slot_goals(
-            encoded_utterance
-        )
+        (
+            logit_cat_slot_status,
+            logit_cat_slot_start,
+            logit_cat_slot_end,
+        ) = self._get_noncategorical_slot_goals(encoded_utterance=encoded_utterance, utterance_mask=utterance_mask, token_embeddings=token_embeddings)
 
         (
             logit_noncat_slot_status,
@@ -268,7 +268,8 @@ class SGDDecoderNM(TrainableNM):
             logit_intent_status,
             logit_req_slot_status,
             logit_cat_slot_status,
-            logit_cat_slot_value_status,
+            logit_cat_slot_start,
+            logit_cat_slot_end,
             logit_noncat_slot_status,
             logit_noncat_slot_start,
             logit_noncat_slot_end,
@@ -317,7 +318,7 @@ class SGDDecoderNM(TrainableNM):
         Obtain logits for status and slot spans for non-categorical slots.
         Slot status values: none, dontcare, active
         """
-        status_logits = self.noncat_slot_layer(
+        status_logits = self.noncat_slot_status_layer(
             encoded_utterance=encoded_utterance
         )
 

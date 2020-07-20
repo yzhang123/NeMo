@@ -357,21 +357,12 @@ class SGDDataProcessor(object):
                         task_example.example_id_num.extend([model_task, slot_id, 0])
                         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                        value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
-                        value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
-                        user_value_utterance = user_utterance + ' ' + value_utterance
-                        user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
+                        
                         task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
-                        )
-                        import ipdb; ipdb.set_trace()
-                        user_span_boundaries = {} 
-                        self._find_cat_subword_indices(
-                            state_update, value_utterance, slot, value_alignments, value_tokens, 2 + len(slot_tokens) + len(user_tokens)
+                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
                         )
 
-                        system_span_boundaries = {}
-                        task_example.add_categorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                        task_example.add_categorical_slots(state_update, {}, {})
                         if task_example.categorical_slot_status == 0:
                             off_slots.append(task_example)
                         else:
@@ -380,23 +371,29 @@ class SGDDataProcessor(object):
                         # examples.append(task_example)
                         old_example = task_example
 
-                        for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
-                            if dataset_split != 'train' or task_example.categorical_slot_status == 1:
-                                task_example = old_example.make_copy_of_categorical_features()
-                                task_example.task_mask[3] = 1
-                                assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
-                                task_example.categorical_slot_id = slot_id
-                                task_example.categorical_slot_value_id = value_id
-                                task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
-                                task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value # add slot description
-                                slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                                task_example.add_utterance_features(
-                                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                                )
-                                task_example.add_categorical_slots(state_update)
-                                assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
-                                examples.append(task_example)
+                        
+                        if dataset_split != 'train' or task_example.categorical_slot_status == 1:
+                            task_example = base_example.make_copy()
+                            task_example.task_mask[3] = 1
+                            assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
+                            task_example.categorical_slot_id = slot_id                        
+                            task_example.example_id += f"-{3}-{slot_id}-0"
+                            task_example.example_id_num.extend([3, slot_id, 0])
+                            value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
+                            value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
+                            user_value_utterance = user_utterance + ' ' + value_utterance
+                            user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
+                            
+                            task_example.add_utterance_features(
+                                slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
+                            )
+                            user_span_boundaries = {} 
+                            self._find_cat_subword_indices(
+                                state_update, value_utterance, slot, value_alignments, value_tokens, 2 + len(slot_tokens) + len(user_tokens)
+                            )
+                            system_span_boundaries = {}
+                            task_example.add_categorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                            examples.append(task_example)
                     
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
@@ -488,19 +485,21 @@ class SGDDataProcessor(object):
 
     def _find_cat_subword_indices(self, slot_values, utterance, current_slot, alignments, subwords, bias):
         """Find indices for subwords corresponding to slot values."""
+
         span_boundaries = {}
         for slot, values in slot_values.items():
             # Get all values present in the utterance for the specified slot.
             value_char_spans = {}
             if slot == current_slot:
                 for v in values:
-                    start_ch_idx = utterance.index(v)
-                    exclusive_end_ch_idx = start_ch_idx + len(v)
-                    start_tok_idx = alignments[start_ch_idx]
-                    end_tok_idx = alignments[exclusive_end_ch_idx - 1]
-                    if 0 <= start_tok_idx < len(subwords):
-                        end_tok_idx = min(end_tok_idx, len(subwords) - 1)
-                        value_char_spans[value] = (start_tok_idx + bias, end_tok_idx + bias)
+                    if v != 'dontcare':
+                        start_ch_idx = utterance.index(v)
+                        exclusive_end_ch_idx = start_ch_idx + len(v)
+                        start_tok_idx = alignments[start_ch_idx]
+                        end_tok_idx = alignments[exclusive_end_ch_idx - 1]
+                        if 0 <= start_tok_idx < len(subwords):
+                            end_tok_idx = min(end_tok_idx, len(subwords) - 1)
+                            value_char_spans[v] = (start_tok_idx + bias, end_tok_idx + bias)
             for v in values:
                 if v in value_char_spans:
                     span_boundaries[slot] = value_char_spans[v]
