@@ -387,8 +387,7 @@ class SGDDataProcessor(object):
                             task_example.add_utterance_features(
                                 slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
                             )
-                            user_span_boundaries = {} 
-                            self._find_cat_subword_indices(
+                            user_span_boundaries = self._find_cat_subword_indices(
                                 state_update, value_utterance, slot, value_alignments, value_tokens, 2 + len(slot_tokens) + len(user_tokens)
                             )
                             system_span_boundaries = {}
