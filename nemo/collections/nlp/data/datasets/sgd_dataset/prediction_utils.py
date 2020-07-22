@@ -89,7 +89,7 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, user_utteranc
             ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
             ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
             value_utterance = " ".join(cat_slot_values[slot])
-            user_value_utterance = user_utterance + value_utterance
+            user_value_utterance = user_utterance + ' ' + value_utterance
             if ch_start_idx > 0 and ch_end_idx > 0:
                 # Add span from the user utterance.
                 out_dict[slot] = user_value_utterance[ch_start_idx - 1 : ch_end_idx]
