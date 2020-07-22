@@ -269,6 +269,8 @@ class SGDDataProcessor(object):
                 # Remove the slot from state if its value didn't change.
                 state_update.pop(slot)
         return state_update
+    def _normalize_snake_case(self, str):
+        return ' '.join(str.split('_'))
 
     def _create_examples_from_turn(
         self, turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas, subsample
