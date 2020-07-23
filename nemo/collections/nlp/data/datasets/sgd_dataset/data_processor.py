@@ -358,18 +358,18 @@ class SGDDataProcessor(object):
                         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
 
-                        # value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
-                        # value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
-                        # user_value_utterance = value_utterance + ' ' + user_utterance 
-                        # user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
+                        value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
+                        value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
+                        user_value_utterance = value_utterance + ' ' + user_utterance 
+                        user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
                         
-                        # task_example.add_utterance_features(
-                        #     slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
-                        # )
-
                         task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                            slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
                         )
+
+                        # task_example.add_utterance_features(
+                        #     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                        # )
                         task_example.add_categorical_slots(state_update)
                         if task_example.categorical_slot_status == 0:
                             off_slots.append(task_example)
