@@ -362,7 +362,7 @@ class SGDDataProcessor(object):
                         
                         value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
                         value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
-                        user_value_utterance = user_utterance + ' ' + value_utterance
+                        user_value_utterance = value_utterance + ' ' + user_utterance 
                         user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
                         
                         task_example.add_utterance_features(
