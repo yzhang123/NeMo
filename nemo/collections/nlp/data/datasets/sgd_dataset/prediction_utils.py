@@ -83,8 +83,13 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
             # if (value_prob+predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item())/2 > cat_value_thresh:
             #     out_dict[slot] = cat_slot_values[slot][value_idx]
         elif slot_status == STATUS_ACTIVE:
+            
+            if sys_slots_agg and slot in sys_slots_agg:
+                # system retrieval 
+                out_dict[slot] = sys_slots_agg[slot]
+            else:
+                out_dict[slot] = cat_slot_values[slot][value_idx]
             # if sys_slots_agg is None or value_prob > cat_value_thresh:
-            out_dict[slot] = cat_slot_values[slot][value_idx]
             # elif slot in sys_slots_agg:
             #     # retrieval 
             #     out_dict[slot] = sys_slots_agg[slot]
@@ -168,7 +173,7 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 # Categorical slots.
                 # cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
                 
-                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=None, cat_value_thresh=cat_value_thresh)
+                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
                 if debug_cat_slots_dict is not None:
                     print(debug_cat_slots_dict)
                     for k, v in debug_cat_slots_dict.items():
