@@ -362,7 +362,7 @@ def create_pipeline(dataset_split='train'):
     )
 
     if dataset_split == 'train':
-        loss = dst_loss(
+        all_losses = dst_loss(
             logit_intent_status=logit_intent_status,
             intent_status=data.intent_status,
             logit_req_slot_status=logit_req_slot_status,
@@ -379,7 +379,7 @@ def create_pipeline(dataset_split='train'):
             noncategorical_slot_value_end=data.noncategorical_slot_value_end,
             task_mask=data.task_mask
         )
-        tensors = [loss]
+        tensors = [all_losses.loss, all_losses.intent_loss, all_losses.slotreq_loss, all_losses.catstatus_loss]
     else:
         tensors = [
             data.example_id_num,
@@ -408,7 +408,7 @@ logging.info(f'Steps per epoch: {steps_per_epoch}')
 # Create trainer and execute training action
 train_callback = SimpleLossLoggerCallback(
     tensors=train_tensors,
-    print_func=lambda x: logging.info("Loss: {:.8f}".format(x[0].item())),
+    print_func=lambda x: logging.info("Loss: {:.8f}, intent: {:.8f},slotreq: {:.8f},catslot: {:.8f}".format(x[0].item(), x[1].item(), x[2].item(), x[3].item())),
     get_tb_values=lambda x: [["loss", x[0]]],
     tb_writer=nf.tb_writer,
     step_freq=args.loss_log_freq if args.loss_log_freq > 0 else steps_per_epoch,
@@ -465,7 +465,7 @@ lr_policy_fn = get_lr_policy(
 )
 
 nf.train(
-    tensors_to_optimize=train_tensors,
+    tensors_to_optimize=train_tensors[:1],
     callbacks=[train_callback, wand_callback, ckpt_callback] + eval_callbacks,
     lr_policy=lr_policy_fn,
     optimizer=args.optimizer_kind,

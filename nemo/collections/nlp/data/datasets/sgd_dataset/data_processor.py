@@ -379,23 +379,23 @@ class SGDDataProcessor(object):
                         # examples.append(task_example)
                         old_example = task_example
 
-                        for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
-                            if dataset_split != 'train' or task_example.categorical_slot_status == 1:
-                                task_example = old_example.make_copy_of_categorical_features()
-                                task_example.task_mask[3] = 1
-                                assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
-                                task_example.categorical_slot_id = slot_id
-                                task_example.categorical_slot_value_id = value_id
-                                task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
-                                task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value # add slot description
-                                slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                                task_example.add_utterance_features(
-                                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                                )
-                                task_example.add_categorical_slots(state_update)
-                                assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
-                                examples.append(task_example)
+                        # for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                        #     if dataset_split != 'train' or task_example.categorical_slot_status == 1:
+                        #         task_example = old_example.make_copy_of_categorical_features()
+                        #         task_example.task_mask[3] = 1
+                        #         assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
+                        #         task_example.categorical_slot_id = slot_id
+                        #         task_example.categorical_slot_value_id = value_id
+                        #         task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
+                        #         task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
+                        #         slot_description = slot + " " + value # add slot description
+                        #         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                        #         task_example.add_utterance_features(
+                        #             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                        #         )
+                        #         task_example.add_categorical_slots(state_update)
+                        #         assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
+                        #         examples.append(task_example)
                     
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
@@ -403,52 +403,52 @@ class SGDDataProcessor(object):
                     else:
                         examples.extend(off_slots)
                     
-                if model_task == 4: # noncat slot status
-                    off_slots = []
-                    on_slots = []
-                    for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
-                        task_example = base_example.make_copy()
-                        task_example.task_mask[model_task] = 1
-                        assert(task_example.task_mask == [0, 0, 0, 0, 1, 0])
-                        task_example.noncategorical_slot_id = slot_id
-                        task_example.example_id += f"-{model_task}-{slot_id}-0"
-                        task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                        task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                        )
+                # if model_task == 4: # noncat slot status
+                #     off_slots = []
+                #     on_slots = []
+                #     for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
+                #         task_example = base_example.make_copy()
+                #         task_example.task_mask[model_task] = 1
+                #         assert(task_example.task_mask == [0, 0, 0, 0, 1, 0])
+                #         task_example.noncategorical_slot_id = slot_id
+                #         task_example.example_id += f"-{model_task}-{slot_id}-0"
+                #         task_example.example_id_num.extend([model_task, slot_id, 0])
+                #         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                #         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                #         task_example.add_utterance_features(
+                #             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                #         )
 
-                        user_span_boundaries = self._find_subword_indices(
-                            state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens) + len(system_tokens)
-                        )
-                        if system_frame is not None: 
-                            system_span_boundaries = self._find_subword_indices(
-                                state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(slot_tokens)
-                            )
-                        else:
-                            system_span_boundaries = {}
-                        task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                #         user_span_boundaries = self._find_subword_indices(
+                #             state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens) + len(system_tokens)
+                #         )
+                #         if system_frame is not None: 
+                #             system_span_boundaries = self._find_subword_indices(
+                #                 state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(slot_tokens)
+                #             )
+                #         else:
+                #             system_span_boundaries = {}
+                #         task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
 
-                        if task_example.noncategorical_slot_status == 0:
-                            off_slots.append(task_example)
-                        else:
-                            on_slots.append(task_example)
-                            examples.append(task_example)
+                #         if task_example.noncategorical_slot_status == 0:
+                #             off_slots.append(task_example)
+                #         else:
+                #             on_slots.append(task_example)
+                #             examples.append(task_example)
 
-                        if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
-                            task_example = task_example.make_copy_of_non_categorical_features()
-                            task_example.task_mask[5] = 1
-                            assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
-                            task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
-                            task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
-                            examples.append(task_example)
+                #         if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
+                #             task_example = task_example.make_copy_of_non_categorical_features()
+                #             task_example.task_mask[5] = 1
+                #             assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
+                #             task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
+                #             task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
+                #             examples.append(task_example)
 
-                    if dataset_split == 'train' and subsample:
-                        num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
-                    else:
-                        examples.extend(off_slots)    
+                #     if dataset_split == 'train' and subsample:
+                #         num_on_slots = len(on_slots)
+                #         examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+                #     else:
+                #         examples.extend(off_slots)    
 
             if service not in prev_states and int(turn_id_) > 0:
                 for slot_name, values in state_update.items():

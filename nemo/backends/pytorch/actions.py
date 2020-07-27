@@ -1471,7 +1471,6 @@ class PtActions(Actions):
                         logging.warning('Loss is NaN or inf. Skipping update.')
                         self._training_state.clear_dict()  # Clear state dict here
                         continue
-
                 if self._optim_level in AmpOptimizations and self._optim_level != Optimization.mxprO0:
                     with amp.scale_loss(final_loss, curr_optimizer, delay_unscale=disable_allreduce) as scaled_loss:
                         if disable_allreduce:

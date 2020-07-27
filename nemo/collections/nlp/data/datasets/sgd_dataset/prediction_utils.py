@@ -51,29 +51,23 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
     debug_cat_slots_dict = None
     for slot_idx, slot in enumerate(cat_slots):
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
-        tmp = predictions_value[slot_idx]
-        value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-        # value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
-        value_probs = [v['cat_slot_value_status'][0].item() for k, v in tmp.items()]
-        value_prob = value_probs[value_idx] 
+        # tmp = predictions_value[slot_idx]
+        # value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
+        # # value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
+        # value_probs = [v['cat_slot_value_status'][0].item() for k, v in tmp.items()]
+        # value_prob = value_probs[value_idx] 
 
         # if status is wrong, or wrong value when gt status is NOT == 0
-        if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"] or (predictions_status[slot_idx][0]["cat_slot_status_GT"] != STATUS_OFF and tmp[value_idx]['cat_slot_value_status_GT'] == 0):
+        if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"]:
             if debug_cat_slots_dict is None:
                 debug_cat_slots_dict = defaultdict(tuple)
             
-            value_idx_GT = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status_GT'][0].item())
-            value_prob_GT = value_probs[value_idx_GT]
             gt_status_id = predictions_status[slot_idx][0]["cat_slot_status_GT"].item()
             debug_cat_slots_dict[slot] = (
                 gt_status_id,
                 slot_status.item(),
                 predictions_status[slot_idx][0]["cat_slot_status_p"][gt_status_id].item(),
-                predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item(),
-                cat_slot_values[slot][value_idx_GT],
-                value_prob_GT,
-                cat_slot_values[slot][value_idx],
-                value_prob,
+                predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item()
             )
 
         if slot_status == STATUS_DONTCARE:
@@ -84,11 +78,11 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
             #     out_dict[slot] = cat_slot_values[slot][value_idx]
         elif slot_status == STATUS_ACTIVE:
             
-            if sys_slots_agg and slot in sys_slots_agg:
-                # system retrieval 
-                out_dict[slot] = sys_slots_agg[slot]
-            else:
-                out_dict[slot] = cat_slot_values[slot][value_idx]
+            # if sys_slots_agg and slot in sys_slots_agg:
+            #     # system retrieval 
+            #     out_dict[slot] = sys_slots_agg[slot]
+            # else:
+            out_dict[slot] = 'CATON'
             # if sys_slots_agg is None or value_prob > cat_value_thresh:
             # elif slot in sys_slots_agg:
             #     # retrieval 
@@ -178,7 +172,7 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                     print(debug_cat_slots_dict)
                     for k, v in debug_cat_slots_dict.items():
                         total_mistakes += 1
-                        if v[0] == 1 and v[1] == 0 and v[4] == v[6]:
+                        if v[0] == 1 and v[1] == 0:
                             false_negative += 1
                         elif v[0] == 0 and v[1] == 1:
                             false_positive += 1
@@ -186,9 +180,9 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                     slot_values[k] = v
 
                 # # Non-categorical slots.
-                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
-                for k, v in noncat_out_dict.items():
-                    slot_values[k] = v
+                # noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
+                # for k, v in noncat_out_dict.items():
+                #     slot_values[k] = v
                 # Create a new dict to avoid overwriting the state in previous turns
                 # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}

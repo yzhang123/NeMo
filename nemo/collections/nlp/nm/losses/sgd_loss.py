@@ -84,7 +84,7 @@ class SGDDialogueStateLossNM(LossNM):
         loss:
             NeuralType(None)
         """
-        return {"loss": NeuralType(None)}
+        return {"loss": NeuralType(None), "intent_loss": NeuralType(None), "slotreq_loss": NeuralType(None), "catstatus_loss": NeuralType(None)}
 
     def __init__(self, reduction='mean'):
         """
@@ -203,8 +203,8 @@ class SGDDialogueStateLossNM(LossNM):
 
         total_loss = sum(losses.values())
         if self.reduction == 'mean':
-            total_loss = total_loss / len(losses)
+            total_loss = total_loss / 3
         else:
             batch_size = logit_intent_status.shape[0]
             total_loss = total_loss / batch_size
-        return total_loss
+        return total_loss, intent_loss, requested_slot_loss, cat_slot_status_loss
