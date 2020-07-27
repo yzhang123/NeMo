@@ -158,10 +158,10 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 state = {}
                 
                 # Add prediction for active intent. No Offset is subtracted since schema has now NONE intent at index 0
-                state["active_intent"] = get_predicted_intent(predictions=predictions[0], intents=service_schema.intents)
+                state["active_intent"] = "NO" #get_predicted_intent(predictions=predictions[0], intents=service_schema.intents)
                 # state["active_intent"] = "NONE"
                 # Add prediction for requested slots.
-                state["requested_slots"] = get_requested_slot(predictions=predictions[1], slots=service_schema.slots)
+                state["requested_slots"] = [] #get_requested_slot(predictions=predictions[1], slots=service_schema.slots)
                 # state["requested_slots"] = []
 
                 # Add prediction for user goal (slot values).
