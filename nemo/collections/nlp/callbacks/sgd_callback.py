@@ -58,14 +58,18 @@ def get_str_example_id(eval_dataset, ids_to_service_names_dict, example_id_num):
 def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     if 'predictions' not in global_vars:
         global_vars['predictions'] = []
+        global_vars['loss'] = []
 
     output = {}
     # keys of eval tensors
     # dict_keys(['example_id_num', 'service_id', 'is_real_example', 'start_char_idx', 'end_char_idx', 'logit_intent_status', 'logit_req_slot_status', 'logit_cat_slot_status', 'logit_cat_slot_value', 'logit_noncat_slot_status', 'logit_noncat_slot_start', 'logit_noncat_slot_end', 'intent_status_labels', 'requested_slot_status', 'categorical_slot_status', 'categorical_slot_values', 'noncategorical_slot_status'])
     for k, v in tensors.items():
         ind = k.find('~~~')
-        if ind != -1:
-            output[k[:ind]] = torch.cat(v)
+        if ind != -1:            
+            if k[:ind] != "loss":
+                output[k[:ind]] = torch.cat(v)
+            else:
+                global_vars[k[:ind]].extend(v)
 
     predictions = {}
     ids_to_service_names_dict = schemas._services_id_to_vocab
@@ -84,6 +88,7 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     predictions['cat_slot_status_GT'] = output['categorical_slot_status']
     batch_size = cat_slot_status_dist.size()[0]
     global_vars['predictions'].extend(combine_predictions_in_example(predictions, batch_size))
+     
 
 
 def combine_predictions_in_example(predictions, batch_size):
@@ -137,6 +142,8 @@ def eval_epochs_done_callback(
     metrics = evaluate(
         prediction_dir, data_dir, eval_dataset, in_domain_services
     )
+    eval_loss = torch.stack(global_vars['loss']).mean()
+    logging.info(f"mean eval_loss {eval_loss}")
     return metrics
 
 

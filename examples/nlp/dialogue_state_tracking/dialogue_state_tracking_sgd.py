@@ -338,12 +338,12 @@ def create_pipeline(dataset_split='train'):
     )
     logits = sgd_decoder(hidden_states=hidden_states)
 
+    loss = dst_loss(
+        logit_cat_slot_status=logits,
+        categorical_slot_status=data.categorical_slot_status,
+        task_mask=data.task_mask
+    )
     if dataset_split == 'train':
-        loss = dst_loss(
-            logit_cat_slot_status=logits,
-            categorical_slot_status=data.categorical_slot_status,
-            task_mask=data.task_mask
-        )
         tensors = [loss]
     else:
         tensors = [
@@ -353,7 +353,8 @@ def create_pipeline(dataset_split='train'):
             data.start_char_idx,
             data.end_char_idx,
             logits,
-            data.categorical_slot_status,\
+            data.categorical_slot_status,
+            loss
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.batches_per_step))
