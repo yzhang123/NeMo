@@ -74,62 +74,15 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     predictions['service_id'] = output['service_id']
     predictions['is_real_example'] = output['is_real_example']
 
-    # Prob Scores are output for each intent.
-    # Note that the intent indices are shifted by 1 to account for NONE intent.
-    predictions['intent_status'] = torch.nn.Sigmoid()(output['logit_intent_status'])
-
-    # Scores are output for each requested slot.
-    predictions['req_slot_status'] = torch.nn.Sigmoid()(output['logit_req_slot_status'])
-
     # For categorical slots, the status of each slot and the predicted value are output.
-    cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_cat_slot_status'])
+    cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logits'])
 
-    predictions['cat_slot_status'] = torch.argmax(output['logit_cat_slot_status'], axis=-1)
+    predictions['cat_slot_status'] = torch.argmax(output['logits'], axis=-1)
     predictions['cat_slot_status_p'] = cat_slot_status_dist
-    predictions['cat_slot_value_status'] = torch.nn.Sigmoid()(output['logit_cat_slot_value_status'])
-
-    # For non-categorical slots, the status of each slot and the indices for spans are output.
-    noncat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_noncat_slot_status'])
-
-    predictions['noncat_slot_status'] = torch.argmax(output['logit_noncat_slot_status'], axis=-1)
-    predictions['noncat_slot_status_p'] = noncat_slot_status_dist
-
-    softmax = torch.nn.Softmax(dim=-1)
-    start_scores = softmax(output['logit_noncat_slot_start'])
-    end_scores = softmax(output['logit_noncat_slot_end'])
-
-    batch_size, max_num_tokens = end_scores.size()
-    # Find the span with the maximum sum of scores for start and end indices.
-    total_scores = torch.unsqueeze(start_scores, axis=2) + torch.unsqueeze(end_scores, axis=1)
-    # Mask out scores where start_index > end_index.
-    # device = total_scores.device
-    start_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, -1, 1)
-    end_idx = torch.arange(max_num_tokens, device=total_scores.device).view(1, 1, -1)
-    invalid_index_mask = (start_idx > end_idx).repeat(batch_size, 1, 1)
-    total_scores = torch.where(
-        invalid_index_mask,
-        torch.zeros(total_scores.size(), device=total_scores.device, dtype=total_scores.dtype),
-        total_scores,
-    )
-    max_span_index = torch.argmax(total_scores.view(-1, max_num_tokens ** 2), axis=-1)
-    max_span_p = torch.max(total_scores.view(-1, max_num_tokens ** 2), axis=-1)[0]
-    predictions['noncat_slot_p'] = max_span_p
-
-    span_start_index = torch.div(max_span_index, max_num_tokens)
-    span_end_index = torch.fmod(max_span_index, max_num_tokens)
-
-    predictions['noncat_slot_start'] = span_start_index
-    predictions['noncat_slot_end'] = span_end_index
-
-    # Add inverse alignments.
-    predictions['noncat_alignment_start'] = output['start_char_idx']
-    predictions['noncat_alignment_end'] = output['end_char_idx']
 
     # added for debugging
     predictions['cat_slot_status_GT'] = output['categorical_slot_status']
-    predictions['noncat_slot_status_GT'] = output['noncategorical_slot_status']
-    predictions['cat_slot_value_status_GT'] = output['categorical_slot_value_status']
-
+    batch_size = cat_slot_status_dist.size()[0]
     global_vars['predictions'].extend(combine_predictions_in_example(predictions, batch_size))
 
 
@@ -161,10 +114,6 @@ def eval_epochs_done_callback(
     eval_debug,
     dialogues_processor,
     schemas,
-    joint_acc_across_turn,
-    no_fuzzy_match,
-    cat_value_thresh=0.0,
-    non_cat_value_thresh=0.0
 ):
     # added for debugging
     in_domain_services = get_in_domain_services(
@@ -184,16 +133,14 @@ def eval_epochs_done_callback(
         state_tracker=state_tracker,
         eval_debug=eval_debug,
         in_domain_services=in_domain_services,
-        cat_value_thresh=cat_value_thresh,
-        non_cat_value_thresh=non_cat_value_thresh
     )
     metrics = evaluate(
-        prediction_dir, data_dir, eval_dataset, in_domain_services, joint_acc_across_turn, no_fuzzy_match,
+        prediction_dir, data_dir, eval_dataset, in_domain_services
     )
     return metrics
 
 
-def evaluate(prediction_dir, data_dir, eval_dataset, in_domain_services, joint_acc_across_turn, no_fuzzy_match):
+def evaluate(prediction_dir, data_dir, eval_dataset, in_domain_services):
 
     with open(os.path.join(data_dir, eval_dataset, "schema.json")) as f:
         eval_services = {}
@@ -207,7 +154,7 @@ def evaluate(prediction_dir, data_dir, eval_dataset, in_domain_services, joint_a
 
     # has ALLSERVICE, SEEN_SERVICES, UNSEEN_SERVICES, SERVICE, DOMAIN
     all_metric_aggregate, _ = get_metrics(
-        dataset_ref, dataset_hyp, eval_services, in_domain_services, joint_acc_across_turn, no_fuzzy_match
+        dataset_ref, dataset_hyp, eval_services, in_domain_services
     )
     if SEEN_SERVICES in all_metric_aggregate:
         logging.info(f'Dialog metrics for {SEEN_SERVICES}  : {sorted(all_metric_aggregate[SEEN_SERVICES].items())}')

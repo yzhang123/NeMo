@@ -90,72 +90,11 @@ class InputExample(object):
 
         # Id of categorical slot present in the service.
         self.categorical_slot_id = 0
-        # Id of categorical slot present in the service.
-        self.noncategorical_slot_id = 0
         # The status of each categorical slot in the service.
         self.categorical_slot_status = STATUS_OFF
-        self.noncategorical_slot_status = STATUS_OFF
         # Masks out categorical status for padded cat slots
         self.task_mask = [0] * schema_config["NUM_TASKS"]
 
-        self.noncategorical_slot_value_start = 0 
-        # The index of the ending (inclusive) subword corresponding to the slot span
-        # for a non-categorical slot value.
-        self.noncategorical_slot_value_end = 0
-
-        # Total number of slots present in the service. All slots are included here
-        # since every slot can be requested.
-        self.categorical_slot_value_id = 0
-        self.categorical_slot_value_status = STATUS_OFF
-        self.requested_slot_id = 0
-        # Takes value 1 if the corresponding slot is requested, 0 otherwise.
-        self.requested_slot_status = STATUS_OFF
-        
-        # Total number of intents present in the service.
-        self.intent_id = 0
-        # Takes value 1 if the intent is active, 0 otherwise.
-        self.intent_status = STATUS_OFF
-
-    @property
-    def readable_summary(self):
-        """Get a readable dict that summarizes the attributes of an InputExample."""
-        seq_length = sum(self.utterance_mask)
-        utt_toks = self._tokenizer.ids_to_tokens(self.utterance_ids[:seq_length])
-        utt_tok_mask_pairs = list(zip(utt_toks, self.utterance_segment[:seq_length]))
-        active_intent = self.service_schema.get_intent_from_id(self.intent_id) if self.intent_status == STATUS_ACTIVE else ""
-        slot_values_in_state = {}
-        if self.categorical_slot_status == STATUS_ACTIVE:
-            slot_values_in_state[
-                self.service_schema.get_categorical_slot_from_id(self.categorical_slot_id)
-            ] = self.service_schema.get_categorical_slot_value_from_id(self.categorical_slot_id, self.categorical_slot_value_id)
-        elif self.categorical_slot_status == STATUS_DONTCARE:
-            slot_values_in_state[self.service_schema.get_categorical_slot_from_id(self.categorical_slot_id)] = STR_DONTCARE
-        if self.noncategorical_slot_status == STATUS_ACTIVE:
-            slot = self.service_schema.get_non_categorical_slot_from_id(self.noncategorical_slot_id)
-            start_id = self.noncategorical_slot_value_start[idx]
-            end_id = self.noncategorical_slot_value_end[idx]
-            # Token list is consisted of the subwords that may start with "##". We
-            # remove "##" to reconstruct the original value. Note that it's not a
-            # strict restoration of the original string. It's primarily used for
-            # debugging.
-            # ex. ["san", "j", "##ose"] --> "san jose"
-            readable_value = " ".join(utt_toks[start_id : end_id + 1]).replace(" ##", "")
-            slot_values_in_state[slot] = readable_value
-        elif self.noncategorical_slot_status == STATUS_DONTCARE:
-            slot = self.service_schema.get_non_categorical_slot_from_id(self.noncategorical_slot_id)
-            slot_values_in_state[slot] = STR_DONTCARE
-
-        summary_dict = {
-            "utt_tok_mask_pairs": utt_tok_mask_pairs,
-            "utt_len": seq_length,
-            "categorical_slot_id": self.categorical_slot_id,
-            "noncategorical_slot_id": self.noncategorical_slot_id,
-            "intent_id": self.intent_id,
-            "service_name": self.service_schema.service_name,
-            "active_intent": active_intent,
-            "slot_values_in_state": slot_values_in_state,
-        }
-        return summary_dict
 
     def add_utterance_features(
         self, system_tokens, system_inv_alignments, user_tokens, user_inv_alignments, system_utterance, user_utterance
@@ -258,30 +197,6 @@ class InputExample(object):
         )
         return new_example
 
-    def make_copy_of_categorical_features(self):
-        """Make a copy of the current example with utterance features."""
-        new_example = self.make_copy()
-
-        new_example.categorical_slot_status = self.categorical_slot_status
-        return new_example
-
-    def make_copy_of_non_categorical_features(self):
-        """Make a copy of the current example with utterance features."""
-        new_example = self.make_copy()
-        new_example.noncategorical_slot_id = self.noncategorical_slot_id
-        new_example.noncategorical_slot_status = self.noncategorical_slot_status
-        new_example.utterance_ids = list(self.utterance_ids)
-        new_example.utterance_segment = list(self.utterance_segment)
-        new_example.utterance_mask = list(self.utterance_mask)
-        new_example.start_char_idx = list(self.start_char_idx)
-        new_example.end_char_idx = list(self.end_char_idx)
-        new_example.user_utterance = self.user_utterance
-        new_example.system_utterance = self.system_utterance
-        new_example.noncategorical_slot_status = self.noncategorical_slot_status
-        new_example.noncategorical_slot_value_start = self.noncategorical_slot_value_start
-        new_example.noncategorical_slot_value_end = self.noncategorical_slot_value_end
-        return new_example
-
 
     def add_categorical_slots(self, state_update):
         """Add features for categorical slots."""
@@ -300,51 +215,6 @@ class InputExample(object):
             self.categorical_slot_status = STATUS_ACTIVE
             self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
                 slot, values[0])
-
-    def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
-        """Add features for non-categorical slots."""
-
-        noncategorical_slots = self.service_schema.non_categorical_slots
-        slot = noncategorical_slots[self.noncategorical_slot_id]
-       
-        values = state_update.get(slot, [])
-        if not values:
-            self.noncategorical_slot_status = STATUS_OFF
-        elif values[0] == STR_DONTCARE:
-            self.noncategorical_slot_status = STATUS_DONTCARE
-        else:
-            self.noncategorical_slot_status = STATUS_ACTIVE
-            # Add indices of the start and end tokens for the first encountered
-            # value. Spans in user utterance are prioritized over the system
-            # utterance. If a span is not found, the slot value is ignored.
-            if slot in user_span_boundaries:
-                start, end = user_span_boundaries[slot]
-            elif slot in system_span_boundaries:
-                start, end = system_span_boundaries[slot]
-            else:
-                # A span may not be found because the value was cropped out or because
-                # the value was mentioned earlier in the dialogue. Since this model
-                # only makes use of the last two utterances to predict state updates,
-                # it will fail in such cases.
-                logging.debug(
-                    f'"Slot values {str(values)} not found in user or system utterance in example with id - {self.example_id}.'
-                )
-                start = 0
-                end = 0
-            self.noncategorical_slot_value_start = start
-            self.noncategorical_slot_value_end = end
-
-    def add_requested_slots(self, frame):
-        all_slots = self.service_schema.slots
-        slot = all_slots[self.requested_slot_id]
-        if slot in frame["state"]["requested_slots"]:
-            self.requested_slot_status = STATUS_ACTIVE
-
-    def add_intents(self, frame):
-        all_intents = self.service_schema.intents
-        intent = all_intents[self.intent_id]
-        if intent == frame["state"]["active_intent"]:
-            self.intent_status = STATUS_ACTIVE
 
 
 # Modified from run_classifier._truncate_seq_pair in the public bert model repo.

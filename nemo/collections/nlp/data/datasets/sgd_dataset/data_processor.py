@@ -30,7 +30,7 @@ import inflect
 import numpy as np
 import torch
 
-from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import InputExample
+from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import InputExample, STR_DONTCARE, STATUS_ACTIVE, STATUS_OFF, STATUS_DONTCARE
 from nemo.utils import logging
 
 __all__ = ['FILE_RANGES', 'PER_FRAME_OUTPUT_FILENAME', 'SGDDataProcessor']
@@ -115,18 +115,11 @@ class SGDDataProcessor(object):
                 if master_device:
                     if not os.path.exists(dialogues_example_dir):
                         os.makedirs(dialogues_example_dir)
-                    dial_examples, slots_relation_list = self._generate_dialog_examples(
+                    dial_examples = self._generate_dialog_examples(
                         dataset, schemas, subsample
                     )
                     with open(dial_file, "wb") as f:
                         np.save(f, dial_examples)
-
-                    if dataset == "train":
-                        with open(self.slots_relation_file, "wb") as f:
-                            pickle.dump(slots_relation_list, f)
-                        logging.debug(
-                            f"The slot carry-over list for train set is stored at {self.slots_relation_file}"
-                        )
 
                     logging.debug(f"The dialogue examples for {dataset} dataset saved at {dial_file}")
                 logging.debug(f"Finish generating the dialogue examples for {dataset} dataset.")
@@ -188,32 +181,21 @@ class SGDDataProcessor(object):
         dialogs = SGDDataProcessor.load_dialogues(dialog_paths, num2str=self._num2str)
 
         examples = []
-        slot_carryover_candlist = collections.defaultdict(int)
         for dialog_idx, dialog in enumerate(dialogs):
             if dialog_idx % 1000 == 0:
                 logging.info(f'Processed {dialog_idx} dialogues.')
-            examples.extend(self._create_examples_from_dialog(dialog, schemas, dataset, slot_carryover_candlist, subsample))
+            examples.extend(self._create_examples_from_dialog(dialog, schemas, dataset, subsample))
 
-        slots_relation_list = collections.defaultdict(list)
-        for slots_relation, relation_size in slot_carryover_candlist.items():
-            if relation_size > 0:
-                slots_relation_list[(slots_relation[0], slots_relation[1])].append(
-                    (slots_relation[2], slots_relation[3], relation_size)
-                )
-                slots_relation_list[(slots_relation[2], slots_relation[3])].append(
-                    (slots_relation[0], slots_relation[1], relation_size)
-                )
 
-        return examples, slots_relation_list
+        return examples
 
-    def _create_examples_from_dialog(self, dialog, schemas, dataset, slot_carryover_candlist, subsample):
+    def _create_examples_from_dialog(self, dialog, schemas, dataset, subsample):
         """
         Create examples for every turn in the dialog.
         Args:
             dialog (dict): dialogue example
             schemas(Schema): for all services and all datasets processed by the schema_processor
             dataset(str): can be "train", "dev", or "test".
-            slot_carryover_candlist(dict): a dictionary to keep and count the number of carry-over cases between two slots from two different services
         Returns:
             examples: a list of `InputExample`s.
         """
@@ -234,23 +216,11 @@ class SGDDataProcessor(object):
                     system_frames = {}
 
                 turn_id = "{}-{}-{:02d}".format(dataset, dialog_id, turn_idx)
-                turn_examples, prev_states, slot_carryover_values = self._create_examples_from_turn(
+                turn_examples, prev_states = self._create_examples_from_turn(
                     turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas, subsample
                 )
                 examples.extend(turn_examples)
 
-                for value, slots_list in slot_carryover_values.items():
-                    if value in ["True", "False"]:
-                        continue
-                    if len(slots_list) > 1:
-                        for service1, slot1 in slots_list:
-                            for service2, slot2 in slots_list:
-                                if service1 == service2:
-                                    continue
-                                if service1 > service2:
-                                    service1, service2 = service2, service1
-                                    slot1, slot2 = slot2, slot1
-                                slot_carryover_candlist[(service1, slot1, service2, slot2)] += 1
         return examples
 
     def _get_state_update(self, current_state, prev_state):
@@ -314,156 +284,47 @@ class SGDDataProcessor(object):
                 schemas.get_service_id(service),
             ]
 
-            for model_task in range(6):
-                if model_task == 0:
-                    for intent_id, intent in enumerate(schemas.get_service_schema(service).intents):
-                        task_example = base_example.make_copy()
-                        task_example.task_mask[model_task] = 1
-                        task_example.intent_id = intent_id
-                        task_example.example_id += f"-{model_task}-{intent_id}-0"
-                        task_example.example_id_num.extend([model_task, intent_id, 0])
-                        intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
-                        intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
-                        task_example.add_utterance_features(
-                            intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
-                        )
-                        task_example.add_intents(user_frame)
-                        examples.append(task_example)
-                    
-                if model_task == 1:
-                    for slot_id, slot in enumerate(schemas.get_service_schema(service).slots):
-                        task_example = base_example.make_copy()
-                        task_example.task_mask[model_task] = 1
-                        task_example.requested_slot_id = slot_id
-                        task_example.example_id += f"-{model_task}-{slot_id}-0"
-                        task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                        task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
-                        )
-                        task_example.add_requested_slots(user_frame)   
-                        examples.append(task_example) 
-                if model_task == 2:
-                    off_slots = []
-                    on_slots = []
-                    for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
-                        task_example = base_example.make_copy()
-                        task_example.task_mask[model_task] = 1
-                        
-                        assert(task_example.task_mask == [0, 0, 1, 0, 0, 0])
-                        task_example.categorical_slot_id = slot_id
-                        task_example.example_id += f"-{model_task}-{slot_id}-0"
-                        task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+            model_task=2
+            off_slots = []
+            on_slots = []
+            for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
+                task_example = base_example.make_copy()
+                task_example.task_mask[model_task] = 1
+                
+                assert(task_example.task_mask == [0, 0, 1, 0, 0])
+                task_example.categorical_slot_id = slot_id
+                task_example.example_id += f"-{model_task}-{slot_id}-0"
+                task_example.example_id_num.extend([model_task, slot_id, 0])
+                slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
+                slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                task_example.add_utterance_features(
+                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                )
 
-                        value_utterance = ' '.join(schemas.get_service_schema(service).get_categorical_slot_values(slot))
-                        value_tokens, value_alignments, value_inv_alignments = self._tokenize(value_utterance)
-                        user_value_utterance = value_utterance + ' ' + user_utterance 
-                        user_value_tokens, user_value_alignments, user_value_inv_alignments = self._tokenize(user_value_utterance)
-                        
-                        task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, user_value_tokens, user_value_inv_alignments, slot_description, user_value_utterance
-                        )
+                values = state_update.get(slot, [])
+        
+                if not values:
+                    task_example.categorical_slot_status = STATUS_OFF
+                elif values[0] == STR_DONTCARE:
+                    task_example.categorical_slot_status = STATUS_DONTCARE
+                else:
+                    task_example.categorical_slot_status = STATUS_ACTIVE
+    
+                if task_example.categorical_slot_status == 0:
+                    off_slots.append(task_example)
+                else:
+                    on_slots.append(task_example)
+                    examples.append(task_example)
 
-                        # task_example.add_utterance_features(
-                        #     slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                        # )
-                        task_example.add_categorical_slots(state_update)
-                        if task_example.categorical_slot_status == 0:
-                            off_slots.append(task_example)
-                        else:
-                            on_slots.append(task_example)
-                            examples.append(task_example)
-                        # examples.append(task_example)
-                        old_example = task_example
+            if dataset_split == 'train' and subsample:
+                num_on_slots = len(on_slots)
+                examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+            else:
+                examples.extend(off_slots)
+            
 
-                        for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
-                            if dataset_split != 'train' or task_example.categorical_slot_status == 1:
-                                task_example = old_example.make_copy_of_categorical_features()
-                                task_example.task_mask[3] = 1
-                                assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
-                                task_example.categorical_slot_id = slot_id
-                                task_example.categorical_slot_value_id = value_id
-                                task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
-                                task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value # add slot description
-                                slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                                task_example.add_utterance_features(
-                                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                                )
-                                task_example.add_categorical_slots(state_update)
-                                assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
-                                examples.append(task_example)
-                    
-                    if dataset_split == 'train' and subsample:
-                        num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
-                    else:
-                        examples.extend(off_slots)
-                    
-                if model_task == 4: # noncat slot status
-                    off_slots = []
-                    on_slots = []
-                    for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
-                        task_example = base_example.make_copy()
-                        task_example.task_mask[model_task] = 1
-                        assert(task_example.task_mask == [0, 0, 0, 0, 1, 0])
-                        task_example.noncategorical_slot_id = slot_id
-                        task_example.example_id += f"-{model_task}-{slot_id}-0"
-                        task_example.example_id_num.extend([model_task, slot_id, 0])
-                        slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                        slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                        task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                        )
 
-                        user_span_boundaries = self._find_subword_indices(
-                            state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens) + len(system_tokens)
-                        )
-                        if system_frame is not None: 
-                            system_span_boundaries = self._find_subword_indices(
-                                state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(slot_tokens)
-                            )
-                        else:
-                            system_span_boundaries = {}
-                        task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
-
-                        if task_example.noncategorical_slot_status == 0:
-                            off_slots.append(task_example)
-                        else:
-                            on_slots.append(task_example)
-                            examples.append(task_example)
-
-                        if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
-                            task_example = task_example.make_copy_of_non_categorical_features()
-                            task_example.task_mask[5] = 1
-                            assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
-                            task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
-                            task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
-                            examples.append(task_example)
-
-                    if dataset_split == 'train' and subsample:
-                        num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
-                    else:
-                        examples.extend(off_slots)    
-
-            if service not in prev_states and int(turn_id_) > 0:
-                for slot_name, values in state_update.items():
-                    for value in values:
-                        slot_carryover_values[value].append((service, slot_name))
-                for prev_service, prev_slot_value_list in prev_states.items():
-                    if prev_service == service:
-                        continue
-                    if prev_service in state:
-                        prev_slot_value_list = state[prev_service]
-                    for prev_slot_name, prev_values in prev_slot_value_list.items():
-                        for prev_value in prev_values:
-                            slot_carryover_values[prev_value].append((prev_service, prev_slot_name))
-
-        return examples, states, slot_carryover_values
+        return examples, states
 
     def _find_subword_indices(self, slot_values, utterance, char_slot_spans, alignments, subwords, bias):
         """Find indices for subwords corresponding to slot values."""

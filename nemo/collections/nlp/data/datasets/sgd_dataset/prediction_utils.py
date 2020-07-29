@@ -43,7 +43,7 @@ MIN_SLOT_RELATION = 25
 __all__ = ['get_predicted_dialog', 'write_predictions_to_file']
 
 
-def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg, cat_value_thresh):
+def set_cat_slot(predictions_status, cat_slots):
     """
     write predicted slot and values into out_dict 
     """
@@ -51,77 +51,31 @@ def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_valu
     debug_cat_slots_dict = None
     for slot_idx, slot in enumerate(cat_slots):
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
-        tmp = predictions_value[slot_idx]
-        value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-        # value_probs = _compute_softmax([v['cat_slot_value_status'][0].item() for k, v in tmp.items()])
-        value_probs = [v['cat_slot_value_status'][0].item() for k, v in tmp.items()]
-        value_prob = value_probs[value_idx] 
-
+    
         # if status is wrong, or wrong value when gt status is NOT == 0
-        if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"] or (predictions_status[slot_idx][0]["cat_slot_status_GT"] != STATUS_OFF and tmp[value_idx]['cat_slot_value_status_GT'] == 0):
+        if slot_status != predictions_status[slot_idx][0]["cat_slot_status_GT"]:
             if debug_cat_slots_dict is None:
                 debug_cat_slots_dict = defaultdict(tuple)
             
-            value_idx_GT = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status_GT'][0].item())
-            value_prob_GT = value_probs[value_idx_GT]
             gt_status_id = predictions_status[slot_idx][0]["cat_slot_status_GT"].item()
             debug_cat_slots_dict[slot] = (
                 gt_status_id,
                 slot_status.item(),
                 predictions_status[slot_idx][0]["cat_slot_status_p"][gt_status_id].item(),
                 predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item(),
-                cat_slot_values[slot][value_idx_GT],
-                value_prob_GT,
-                cat_slot_values[slot][value_idx],
-                value_prob,
             )
 
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
-        elif slot_status == STATUS_OFF:
-            pass
-            # if (value_prob+predictions_status[slot_idx][0]["cat_slot_status_p"][slot_status.item()].item())/2 > cat_value_thresh:
-            #     out_dict[slot] = cat_slot_values[slot][value_idx]
         elif slot_status == STATUS_ACTIVE:
-            
-            if sys_slots_agg and slot in sys_slots_agg:
-                # system retrieval 
-                out_dict[slot] = sys_slots_agg[slot]
-            else:
-                out_dict[slot] = cat_slot_values[slot][value_idx]
-            # if sys_slots_agg is None or value_prob > cat_value_thresh:
-            # elif slot in sys_slots_agg:
-            #     # retrieval 
-            #     out_dict[slot] = sys_slots_agg[slot]
+            out_dict[slot] = 'CATON'
     return out_dict, debug_cat_slots_dict
 
-def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_utterance, sys_slots_agg, non_cat_value_thresh):
-    """
-    write predicted slot and values into out_dict 
-    """
-    out_dict = {}
-    for slot_idx, slot in enumerate(non_cat_slots):
-        slot_status = predictions_status[slot_idx][0]["noncat_slot_status"]
-        if slot_status == STATUS_DONTCARE:
-            out_dict[slot] = STR_DONTCARE
-        elif slot_status == STATUS_ACTIVE:
-            value_prob = predictions_value[slot_idx][0]["noncat_slot_p"]
-            tok_start_idx = predictions_value[slot_idx][0]["noncat_slot_start"]
-            tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
-            ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
-            ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
-            if ch_start_idx > 0 and ch_end_idx > 0:
-                # Add span from the user utterance.
-                out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
-            elif sys_slots_agg and slot in sys_slots_agg:
-                    # system retrieval 
-                    out_dict[slot] = sys_slots_agg[slot]
-    return out_dict
 
 
 
 
-def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh):
+def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker):
     # Overwrite the labels in the turn with the predictions from the model. For
     # test set, these labels are missing from the data and hence they are added.
 
@@ -131,20 +85,8 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
     false_positive = 0
 
     dialog_id = dialog["dialogue_id"]
-    if state_tracker == "baseline":
-        sys_slots_agg = {} 
-    else:
-        sys_slots_agg = defaultdict(OrderedDict)
     all_slot_values = defaultdict(dict)
     for turn_idx, turn in enumerate(dialog["turns"]):
-        if turn["speaker"] == "SYSTEM" and state_tracker == 'nemotracker':
-            # sys_slots_last = defaultdict(OrderedDict)
-            for frame in turn["frames"]:
-                if frame["service"] not in sys_slots_agg:
-                    sys_slots_agg[frame["service"]] = OrderedDict()
-                for action in frame["actions"]:
-                    if action["slot"] and len(action["values"]) > 0:
-                        sys_slots_agg[frame["service"]][action["slot"]] = action["values"][0]
         if turn["speaker"] == "USER":
             user_utterance = turn["utterance"]
             system_utterance = dialog["turns"][turn_idx - 1]["utterance"] if turn_idx else ""
@@ -163,34 +105,18 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 # are added.
                 state = {}
                 
-                # Add prediction for active intent. No Offset is subtracted since schema has now NONE intent at index 0
-                state["active_intent"] = get_predicted_intent(predictions=predictions[0], intents=service_schema.intents)
-                # state["active_intent"] = "NONE"
-                # Add prediction for requested slots.
-                state["requested_slots"] = get_requested_slot(predictions=predictions[1], slots=service_schema.slots)
-                # state["requested_slots"] = []
-
-                # Add prediction for user goal (slot values).
-                # Categorical slots.
-                # cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
-                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
+                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], cat_slots=service_schema.categorical_slots)
                 if debug_cat_slots_dict is not None:
                     print(debug_cat_slots_dict)
                     for k, v in debug_cat_slots_dict.items():
                         total_mistakes += 1
-                        if v[0] == 1 and v[1] == 0 and v[4] == v[6]:
+                        if v[0] == 1 and v[1] == 0:
                             false_negative += 1
                         elif v[0] == 0 and v[1] == 1:
                             false_positive += 1
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
 
-                # # Non-categorical slots.
-                noncat_out_dict = set_noncat_slot(predictions_status=predictions[4], predictions_value=predictions[5], non_cat_slots=service_schema.non_categorical_slots, user_utterance=system_user_utterance, sys_slots_agg=sys_slots_agg.get(frame["service"], None), non_cat_value_thresh=non_cat_value_thresh)
-                for k, v in noncat_out_dict.items():
-                    slot_values[k] = v
-                # Create a new dict to avoid overwriting the state in previous turns
-                # because of use of same objects.
                 state["slot_values"] = {s: [v] for s, v in slot_values.items()}
                 frame["state"] = state
     print(false_negative, total_mistakes)
@@ -198,29 +124,11 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
 
 
 
-def get_predicted_intent(predictions, intents):
-    """
-    returns intent name with maximum score
-    """
-    assert(len(predictions) == len(intents))
-    active_intent_id=max(predictions, key=lambda k: predictions[k][0]['intent_status'])
-    return (
-        intents[active_intent_id]
-    )
-
-def get_requested_slot(predictions, slots):
-    """
-    returns list of slots which are predicted to be requested
-    """
-    active_indices = [k for k in predictions if predictions[k][0]["req_slot_status"] > REQ_SLOT_THRESHOLD]
-    requested_slots = list(map(lambda k: slots[k], active_indices))
-    return requested_slots
-
 
 
 
 def write_predictions_to_file(
-    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services, cat_value_thresh, non_cat_value_thresh
+    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services
 ):
     """Write the predicted dialogues as json files.
 
@@ -253,7 +161,7 @@ def write_predictions_to_file(
             logging.debug(f'{input_file_path} file is loaded')
             pred_dialogs = []
             for d in dialogs:
-                pred_dialog, a, b, c = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh)
+                pred_dialog, a, b, c = get_predicted_dialog(d, all_predictions, schemas, state_tracker)
                 total_mistakes += a 
                 false_negative += b
                 false_positive += c

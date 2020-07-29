@@ -61,18 +61,8 @@ class SGDDataLayer(DataLayerNM):
             "utterance_ids": NeuralType(('B', 'T'), ChannelType()),
             "utterance_segment": NeuralType(('B', 'T'), ChannelType()),
             "utterance_mask": NeuralType(('B', 'T'), ChannelType()),
-            "intent_id": NeuralType(('B'), LabelsType()),
-            "intent_status": NeuralType(('B'), LabelsType()),
-            "requested_slot_id": NeuralType(('B'), LabelsType()),
-            "requested_slot_status": NeuralType(('B'), LabelsType()),
             "categorical_slot_id": NeuralType(('B'), LabelsType()),
-            "categorical_slot_value_id": NeuralType(('B'), LabelsType()),
             "categorical_slot_status": NeuralType(('B'), LabelsType()),
-            "categorical_slot_value_status": NeuralType(('B'), LabelsType()),
-            "noncategorical_slot_status": NeuralType(('B'), LabelsType()),
-            "noncategorical_slot_id": NeuralType(('B'), LabelsType()),
-            "noncategorical_slot_value_start": NeuralType(('B'), LabelsType()),
-            "noncategorical_slot_value_end": NeuralType(('B'), LabelsType()),
             "start_char_idx": NeuralType(('B', 'T'), LabelsType()),
             "end_char_idx": NeuralType(('B', 'T'), LabelsType()),
             "task_mask": NeuralType(('B', 'T'), ChannelType()),
@@ -83,7 +73,6 @@ class SGDDataLayer(DataLayerNM):
         dataset_split,
         dialogues_processor,
         tokenizer=None,
-        mask_prob=0.0,
         dataset_type=SGDDataset,
         shuffle=False,
         batch_size=1,
@@ -103,40 +92,13 @@ class SGDDataLayer(DataLayerNM):
         if num_workers >= 0:
             self._num_workers = num_workers
 
-        if self._placement == nemo.core.DeviceType.AllGpu:
-            sampler = pt_data.distributed.DistributedSampler(self._dataset)
-        else:
-            sampler = None
-
-        self._dataloader = pt_data.DataLoader(
-            dataset=self._dataset, batch_size=batch_size, collate_fn=self._collate_fn, shuffle=sampler is None, sampler=sampler
-        )
-        self.mask_prob = mask_prob
-
     def __len__(self):
         return len(self._dataset)
 
     @property
     def dataset(self):
-        return None
+        return self._dataset
 
     @property
     def data_iterator(self):
-        return self._dataloader
-
-    def _collate_fn(self, x):
-
-        num_components = len(x[0])
-        components = [[] for _ in range(num_components)]
-        batch_size = len(x)
-        for i in range(batch_size):
-            for j in range(num_components):
-                if j == 3 and self.mask_prob > 0:
-                    for k in range(sum(x[i][5])):
-                        if random.random() < self.mask_prob:
-                            x[i][j][k] = self.tokenizer.mask_id
-
-                components[j].append(x[i][j])
-        
-        res = [torch.from_numpy(np.stack(x, axis=0)).to(self._device) for x in components]
-        return res
+        return None

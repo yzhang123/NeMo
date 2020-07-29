@@ -89,7 +89,6 @@ parser.add_argument("--num_epochs", default=80, type=int, help="Total number of 
 parser.add_argument("--batches_per_step", default=1, type=int, help="Number of iterations per step.")
 parser.add_argument("--optimizer_kind", default="adam_w", type=str)
 parser.add_argument("--learning_rate", default=1e-4, type=float, help="The initial learning rate for Adam.")
-parser.add_argument("--mask_prob", default=0.0, type=float, help="The mask probability")
 parser.add_argument("--lr_policy", default="PolynomialDecayAnnealing", type=str)
 parser.add_argument("--weight_decay", default=0.01, type=float)
 parser.add_argument(
@@ -237,6 +236,7 @@ parser.add_argument(
 parser.add_argument(
     "--subsample", action="store_true", help="subsample negative slot statuses to be same as active/dont care ones",
 )
+parser.add_argument("--num_output_layers", default=1, type=int, help="Number of layers in the Classifier")
 parser.add_argument("--exp_name", default="SGD_Baseline", type=str)
 parser.add_argument("--project", default="SGD", type=str)
 
@@ -246,22 +246,10 @@ logging.info(args)
 if args.debug_mode:
     logging.setLevel("DEBUG")
 
-if args.task_name == "multiwoz":
-    schema_config = {
-        "MAX_NUM_CAT_SLOT": 9,
-        "MAX_NUM_NONCAT_SLOT": 4,
-        "MAX_NUM_VALUE_PER_CAT_SLOT": 47,
-        "MAX_NUM_INTENT": 1,
-        "NUM_TASKS": 6,
-    }
-else:
-    schema_config = {
-        "MAX_NUM_CAT_SLOT": 6,
-        "MAX_NUM_NONCAT_SLOT": 12,
-        "MAX_NUM_VALUE_PER_CAT_SLOT": 12,
-        "MAX_NUM_INTENT": 4,
-        "NUM_TASKS": 6,
-    }
+
+schema_config = {
+    "NUM_TASKS": 5,
+}
 
 if not os.path.exists(args.data_dir):
     raise ValueError(f'Data not found at {args.data_dir}')
@@ -321,10 +309,13 @@ dialogues_processor = data_processor.SGDDataProcessor(
     subsample=args.subsample,
     overwrite_dial_files=args.overwrite_dial_files,
 )
-# define model pipeline
-sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
-sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size
+# define model pipeline\
+sgd_decoder = nemo_nlp.nm.trainables.SequenceClassifier(
+    hidden_size=hidden_size,
+    num_classes=3,
+    dropout=args.dropout,
+    num_layers=args.num_output_layers,
+    log_softmax=False,
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
@@ -338,45 +329,19 @@ def create_pipeline(dataset_split='train'):
         num_workers=args.num_workers,
         tokenizer=tokenizer,
         pin_memory=args.enable_pin_memory,
-        mask_prob=args.mask_prob if dataset_split=="train" else 0.0
     )
     data = datalayer()
 
     # Encode the utterances using BERT.
-    token_embeddings = pretrained_bert_model(
+    hidden_states = pretrained_bert_model(
         input_ids=data.utterance_ids, attention_mask=data.utterance_mask, token_type_ids=data.utterance_segment,
     )
-    encoded_utterance, token_embeddings = sgd_encoder(hidden_states=token_embeddings)
-    (
-        logit_intent_status,
-        logit_req_slot_status,
-        logit_cat_slot_status,
-        logit_cat_slot_value_status,
-        logit_noncat_slot_status,
-        logit_noncat_slot_start,
-        logit_noncat_slot_end,
-    ) = sgd_decoder(
-        encoded_utterance=encoded_utterance,
-        token_embeddings=token_embeddings,
-        utterance_mask=data.utterance_mask
-    )
+    logits = sgd_decoder(hidden_states=hidden_states)
 
     if dataset_split == 'train':
         loss = dst_loss(
-            logit_intent_status=logit_intent_status,
-            intent_status=data.intent_status,
-            logit_req_slot_status=logit_req_slot_status,
-            requested_slot_status=data.requested_slot_status,
-            logit_cat_slot_status=logit_cat_slot_status,
+            logit_cat_slot_status=logits,
             categorical_slot_status=data.categorical_slot_status,
-            logit_cat_slot_value_status=logit_cat_slot_value_status,
-            categorical_slot_value_status=data.categorical_slot_value_status,
-            logit_noncat_slot_status=logit_noncat_slot_status,
-            noncategorical_slot_status=data.noncategorical_slot_status,
-            logit_noncat_slot_start=logit_noncat_slot_start,
-            logit_noncat_slot_end=logit_noncat_slot_end,
-            noncategorical_slot_value_start=data.noncategorical_slot_value_start,
-            noncategorical_slot_value_end=data.noncategorical_slot_value_end,
             task_mask=data.task_mask
         )
         tensors = [loss]
@@ -387,16 +352,8 @@ def create_pipeline(dataset_split='train'):
             data.is_real_example,
             data.start_char_idx,
             data.end_char_idx,
-            logit_intent_status,
-            logit_req_slot_status,
-            logit_cat_slot_status,
-            logit_cat_slot_value_status,
-            logit_noncat_slot_status,
-            logit_noncat_slot_start,
-            logit_noncat_slot_end,
-            data.categorical_slot_status,
-            data.noncategorical_slot_status,
-            data.categorical_slot_value_status,
+            logits,
+            data.categorical_slot_status,\
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.batches_per_step))
@@ -430,10 +387,6 @@ def get_eval_callback(eval_dataset):
             args.debug_mode,
             dialogues_processor,
             schemas,
-            args.joint_acc_across_turn,
-            args.no_fuzzy_match,
-            args.cat_value_thresh,
-            args.non_cat_value_thresh
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,
