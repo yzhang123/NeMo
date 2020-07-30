@@ -15,9 +15,11 @@ trainer:
   checkpoint_callback: false # provided by exp_manager
   logger: false # provided by exp_manager
   num_sanity_val_steps: 0
+  row_log_interval: 1  # Interval of logging.
 
 model:
 
+  checkpoint: null # model checkpoint path to restore weights 
   version_2_with_negative: false
   # If true, the examples contain some that do not have an answer.
 

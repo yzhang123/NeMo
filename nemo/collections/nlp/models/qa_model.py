@@ -22,7 +22,7 @@ from torch.utils.data import DataLoader
 from nemo import logging
 from nemo.collections.common.losses import SpanningLoss
 from nemo.collections.common.tokenizers.tokenizer_utils import get_tokenizer
-from nemo.collections.nlp.data.qa_dataset import SquadDataset
+from nemo.collections.nlp.data import SquadDataset
 from nemo.collections.nlp.modules.common import TokenClassifier
 from nemo.collections.nlp.modules.common.common_utils import get_pretrained_lm_model
 from nemo.core.classes import typecheck
@@ -81,9 +81,7 @@ class QAModel(ModelPT):
 
     @typecheck()
     def forward(self, input_ids, token_type_ids, attention_mask):
-        hidden_states = self.bert(
-            input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask
-        )
+        hidden_states = self.bert(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         logits = self.classifier(hidden_states=hidden_states)
         return logits
 
@@ -170,7 +168,7 @@ class QAModel(ModelPT):
         self.validation_config = val_data_config
 
     def setup_test_data(self, test_data_config: Optional[DictConfig]):
-        self._test_dl = self._setup_dataloader(cfg=test_data_config)
+        self._test_dl = self._setup_dataloader_from_config(cfg=test_data_config)
 
     def _setup_dataloader_from_config(self, cfg: DictConfig):
         dataset = SquadDataset(
@@ -206,7 +204,7 @@ class QAModel(ModelPT):
     def restore_from(self, restore_path: str):
         if restore_path:
             logging.info(f"restore from {restore_path}")
-            pretrained_dict = torch.load(restore_path)
+            pretrained_dict = torch.load(restore_path)['state_dict']
             model_dict = self.state_dict()
             pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
             model_dict.update(pretrained_dict)
