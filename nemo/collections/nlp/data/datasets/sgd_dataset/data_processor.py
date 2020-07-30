@@ -149,17 +149,6 @@ class SGDDataProcessor(object):
             dial_examples = np.load(f, allow_pickle=True)
             f.close()
 
-        if not os.path.exists(self.slots_relation_file):
-            raise ValueError(
-                f"Slots relation file {self.slots_relation_file} does not exist. It is needed for the carry-over mechanism of state tracker for switches between services."
-            )
-
-        with open(self.slots_relation_file, "rb") as f:
-            self.schemas._slots_relation_list = pickle.load(f)
-        logging.info(
-            f"Loaded the slot relation list for value carry-over between services from {self.slots_relation_file}."
-        )
-
         return dial_examples
 
     def get_seen_services(self, dataset_split):
@@ -174,7 +163,7 @@ class SGDDataProcessor(object):
         Returns:
           examples: a list of `InputExample`s.
         """
-        logging.info(f'Creating examples and slot relation list from the dialogues started...')
+        logging.info(f'Creating examples from the dialogues started...')
         dialog_paths = [
             os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
         ]
