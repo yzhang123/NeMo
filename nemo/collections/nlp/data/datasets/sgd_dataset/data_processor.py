@@ -276,7 +276,10 @@ class SGDDataProcessor(object):
             model_task=2
             off_slots = []
             on_slots = []
-            for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
+            all_slots = []
+            all_slots.extend(list(enumerate(schemas.get_service_schema(service).categorical_slots)))
+            all_slots.extend(list(enumerate(schemas.get_service_schema(service).non_categorical_slots)))
+            for slot_id, slot in all_slots:
                 task_example = base_example.make_copy()
                 task_example.task_mask[model_task] = 1
                 
@@ -310,7 +313,6 @@ class SGDDataProcessor(object):
                 examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
             else:
                 examples.extend(off_slots)
-            
 
 
         return examples, states
