@@ -43,13 +43,13 @@ MIN_SLOT_RELATION = 25
 __all__ = ['get_predicted_dialog', 'write_predictions_to_file']
 
 
-def set_cat_slot(predictions_status, cat_slots):
+def set_cat_slot(predictions_status, all_slots):
     """
     write predicted slot and values into out_dict 
     """
     out_dict = {}
     debug_cat_slots_dict = None
-    for slot_idx, slot in enumerate(cat_slots):
+    for slot_idx, slot in all_slots:
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
     
         # if status is wrong, or wrong value when gt status is NOT == 0
@@ -104,8 +104,10 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker):
                 # The baseline model doesn't predict slot spans. Only state predictions
                 # are added.
                 state = {}
-                
-                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], cat_slots=service_schema.categorical_slots)
+                all_slots = []
+                all_slots.extend(list(enumerate(service_schema.categorical_slots)))
+                all_slots.extend(list(enumerate(service_schema.non_categorical_slots)))
+                cat_out_dict, debug_cat_slots_dict = set_cat_slot(predictions_status=predictions[2], all_slots=all_slots)
                 if debug_cat_slots_dict is not None:
                     print(debug_cat_slots_dict)
                     for k, v in debug_cat_slots_dict.items():
