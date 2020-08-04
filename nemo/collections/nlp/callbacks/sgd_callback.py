@@ -79,14 +79,12 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     predictions['is_real_example'] = output['is_real_example']
 
     # For categorical slots, the status of each slot and the predicted value are output.
-    cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logits'])
-
-    predictions['cat_slot_status'] = torch.argmax(output['logits'], axis=-1)
-    predictions['cat_slot_status_p'] = cat_slot_status_dist
+    predictions['cat_slot_value_status'] = torch.nn.Sigmoid()(output['logits'])
 
     # added for debugging
     predictions['cat_slot_status_GT'] = output['categorical_slot_status']
-    batch_size = cat_slot_status_dist.size()[0]
+    predictions['cat_slot_status_value_GT'] = output['categorical_slot_value_status']
+    batch_size = output['logits'].size()[0]
     global_vars['predictions'].extend(combine_predictions_in_example(predictions, batch_size))
      
 

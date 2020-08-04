@@ -51,6 +51,8 @@ class SGDDataset(Dataset):
             np.array(ex.utterance_mask, dtype=np.long),
             np.array(ex.categorical_slot_id),
             np.array(ex.categorical_slot_status),
+            np.array(ex.categorical_slot_value_id),
+            np.array(ex.categorical_slot_value_status, dtype=np.float32),
             np.array(ex.start_char_idx),  # noncat_alignment_start
             np.array(ex.end_char_idx),  # noncat_alignment_end
             np.array(ex.task_mask),  # noncat_alignment_end

@@ -92,6 +92,8 @@ class InputExample(object):
         self.categorical_slot_id = 0
         # The status of each categorical slot in the service.
         self.categorical_slot_status = STATUS_OFF
+        self.categorical_slot_value_id = 0
+        self.categorical_slot_value_status = 0
         # Masks out categorical status for padded cat slots
         self.task_mask = [0] * schema_config["NUM_TASKS"]
 
@@ -196,25 +198,6 @@ class InputExample(object):
             tokenizer=self._tokenizer,
         )
         return new_example
-
-
-    def add_categorical_slots(self, state_update):
-        """Add features for categorical slots."""
-
-        categorical_slots = self.service_schema.categorical_slots
-        if not categorical_slots:
-            return
-        slot = categorical_slots[self.categorical_slot_id]
-        values = state_update.get(slot, [])
-        
-        if not values:
-            self.categorical_slot_status = STATUS_OFF
-        elif values[0] == STR_DONTCARE:
-            self.categorical_slot_status = STATUS_DONTCARE
-        else:
-            self.categorical_slot_status = STATUS_ACTIVE
-            self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
-                slot, values[0])
 
 
 # Modified from run_classifier._truncate_seq_pair in the public bert model repo.

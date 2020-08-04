@@ -63,6 +63,8 @@ class SGDDataLayer(DataLayerNM):
             "utterance_mask": NeuralType(('B', 'T'), ChannelType()),
             "categorical_slot_id": NeuralType(('B'), LabelsType()),
             "categorical_slot_status": NeuralType(('B'), LabelsType()),
+            "categorical_slot_value_id": NeuralType(('B'), LabelsType()),
+            "categorical_slot_value_status": NeuralType(('B'), LabelsType()),
             "start_char_idx": NeuralType(('B', 'T'), LabelsType()),
             "end_char_idx": NeuralType(('B', 'T'), LabelsType()),
             "task_mask": NeuralType(('B', 'T'), ChannelType()),

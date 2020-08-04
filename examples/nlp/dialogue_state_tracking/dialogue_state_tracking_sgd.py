@@ -312,7 +312,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
 # define model pipeline\
 sgd_decoder = nemo_nlp.nm.trainables.SequenceClassifier(
     hidden_size=hidden_size,
-    num_classes=3,
+    num_classes=1,
     dropout=args.dropout,
     num_layers=args.num_output_layers,
     log_softmax=False,
@@ -339,8 +339,8 @@ def create_pipeline(dataset_split='train'):
     logits = sgd_decoder(hidden_states=hidden_states)
 
     loss = dst_loss(
-        logit_cat_slot_status=logits,
-        categorical_slot_status=data.categorical_slot_status,
+        logit=logits,
+        label=data.categorical_slot_value_status,
         task_mask=data.task_mask
     )
     if dataset_split == 'train':
@@ -353,6 +353,7 @@ def create_pipeline(dataset_split='train'):
             data.start_char_idx,
             data.end_char_idx,
             logits,
+            data.categorical_slot_value_status,
             data.categorical_slot_status,
             loss
         ]

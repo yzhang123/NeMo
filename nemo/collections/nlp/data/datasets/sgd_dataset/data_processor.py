@@ -273,37 +273,43 @@ class SGDDataProcessor(object):
                 schemas.get_service_id(service),
             ]
 
-            model_task=2
+            model_task=3
             off_slots = []
             on_slots = []
             for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
-                task_example = base_example.make_copy()
-                task_example.task_mask[model_task] = 1
                 
-                assert(task_example.task_mask == [0, 0, 1, 0, 0])
-                task_example.categorical_slot_id = slot_id
-                task_example.example_id += f"-{model_task}-{slot_id}-0"
-                task_example.example_id_num.extend([model_task, slot_id, 0])
-                slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
-                slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
-                task_example.add_utterance_features(
-                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
-                )
-
                 values = state_update.get(slot, [])
+
+                for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                    task_example = base_example.make_copy()
+                    task_example.task_mask[model_task] = 1
+                    task_example.example_id += f"-{model_task}-{slot_id}-{value_id}"
+                    task_example.example_id_num.extend([model_task, slot_id, value_id])
+                    assert(task_example.task_mask == [0, 0, 0, 1,  0])
+                    task_example.categorical_slot_id = slot_id
+                    task_example.categorical_slot_value_id = value_id
+                    
+                    if not values:
+                        task_example.categorical_slot_status = STATUS_OFF
+                    elif values[0] == STR_DONTCARE:
+                        task_example.categorical_slot_status = STATUS_DONTCARE
+                    else:
+                        task_example.categorical_slot_status = STATUS_ACTIVE
+
+                    slot_description = slot + " " + value # add slot description
+                    slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
+                    task_example.add_utterance_features(
+                        slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                    )
+                    if task_example.categorical_slot_status == 1:
+                        task_example.categorical_slot_value_status = task_example.categorical_slot_value_id == schemas.get_service_schema(service).get_categorical_slot_value_id(slot, values[0])
+
         
-                if not values:
-                    task_example.categorical_slot_status = STATUS_OFF
-                elif values[0] == STR_DONTCARE:
-                    task_example.categorical_slot_status = STATUS_DONTCARE
-                else:
-                    task_example.categorical_slot_status = STATUS_ACTIVE
-    
-                if task_example.categorical_slot_status == 0:
-                    off_slots.append(task_example)
-                else:
-                    on_slots.append(task_example)
-                    examples.append(task_example)
+                    if task_example.categorical_slot_status != 1:
+                        off_slots.append(task_example)
+                    else:
+                        on_slots.append(task_example)
+                        examples.append(task_example)
 
             if dataset_split == 'train' and subsample:
                 num_on_slots = len(on_slots)
@@ -311,8 +317,6 @@ class SGDDataProcessor(object):
             else:
                 examples.extend(off_slots)
             
-
-
         return examples, states
 
     def _find_subword_indices(self, slot_values, utterance, char_slot_spans, alignments, subwords, bias):
