@@ -142,6 +142,7 @@ def eval_epochs_done_callback(
     )
     eval_loss = torch.stack(global_vars['loss']).mean()
     logging.info(f"mean eval_loss {eval_loss}")
+    metrics["mean eval loss"] = eval_loss
     return metrics
 
 

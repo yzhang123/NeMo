@@ -185,7 +185,7 @@ def compare_slot_values(slot_values_ref, slot_values_hyp, service):
             else:  # HYP=off
                 list_cor.append(0.0)
                 list_cor_status.append(0.0)
-                list_cor_value.append(0.0)
+                list_cor_value.append(-1.0)
         else:  # REF=off
             slot_active.append(False)
             if slot_name in slot_values_hyp:  # HYP=active
@@ -194,7 +194,7 @@ def compare_slot_values(slot_values_ref, slot_values_hyp, service):
             else:  # HYP=off
                 list_cor.append(1.0)
                 list_cor_status.append(1.0)
-            list_cor_value.append(0.0)
+            list_cor_value.append(-1.0)
 
     assert len(list_cor) == len(service["slots"])
     assert len(slot_active) == len(service["slots"])
