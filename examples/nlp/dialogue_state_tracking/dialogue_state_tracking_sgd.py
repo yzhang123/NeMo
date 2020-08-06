@@ -341,6 +341,8 @@ def create_pipeline(dataset_split='train'):
         mask_prob=args.mask_prob if dataset_split=="train" else 0.0
     )
     data = datalayer()
+    l_data = len(data)
+    logging.info(f'####{dataset_split} Dataset length: {l_data}')
 
     # Encode the utterances using BERT.
     token_embeddings = pretrained_bert_model(
@@ -403,7 +405,7 @@ def create_pipeline(dataset_split='train'):
     return steps_per_epoch, tensors
 
 steps_per_epoch, train_tensors = create_pipeline()
-logging.info(f'Steps per epoch: {steps_per_epoch}')
+logging.info(f'####Steps per epoch: {steps_per_epoch}')
 
 # Create trainer and execute training action
 train_callback = SimpleLossLoggerCallback(
