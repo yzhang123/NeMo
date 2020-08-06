@@ -97,7 +97,7 @@ class SGDDataProcessor(object):
         # slots_relation_list.np would contain the candidate list of slots for each (service, slot) which would be
         # looked into when a switch between two services happens in the dialogue and we can not find any value for a slot in the current user utterance.
         # This file would get generated from the dialogues in the training set.
-        self.slots_relation_file = os.path.join(dialogues_example_dir, f"{task_name}_train_slots_relation_list.np")
+        # self.slots_relation_file = os.path.join(dialogues_example_dir, f"{task_name}_train_slots_relation_list.np")
 
         master_device = not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
         for dataset in ["train", "dev", "test"]:
@@ -122,12 +122,12 @@ class SGDDataProcessor(object):
                     with open(dial_file, "wb") as f:
                         np.save(f, dial_examples)
 
-                    if dataset == "train":
-                        with open(self.slots_relation_file, "wb") as f:
-                            pickle.dump(slots_relation_list, f)
-                        logging.debug(
-                            f"The slot carry-over list for train set is stored at {self.slots_relation_file}"
-                        )
+                    # if dataset == "train":
+                    #     with open(self.slots_relation_file, "wb") as f:
+                    #         pickle.dump(slots_relation_list, f)
+                    #     logging.debug(
+                    #         f"The slot carry-over list for train set is stored at {self.slots_relation_file}"
+                    #     )
 
                     logging.debug(f"The dialogue examples for {dataset} dataset saved at {dial_file}")
                 logging.debug(f"Finish generating the dialogue examples for {dataset} dataset.")
@@ -157,16 +157,17 @@ class SGDDataProcessor(object):
             dial_examples = np.load(f, allow_pickle=True)
             f.close()
 
-        if not os.path.exists(self.slots_relation_file):
-            raise ValueError(
-                f"Slots relation file {self.slots_relation_file} does not exist. It is needed for the carry-over mechanism of state tracker for switches between services."
-            )
+        logging.info(f"Loading dialogue finished")
+        # if not os.path.exists(self.slots_relation_file):
+        #     raise ValueError(
+        #         f"Slots relation file {self.slots_relation_file} does not exist. It is needed for the carry-over mechanism of state tracker for switches between services."
+        #     )
 
-        with open(self.slots_relation_file, "rb") as f:
-            self.schemas._slots_relation_list = pickle.load(f)
-        logging.info(
-            f"Loaded the slot relation list for value carry-over between services from {self.slots_relation_file}."
-        )
+        # with open(self.slots_relation_file, "rb") as f:
+        #     self.schemas._slots_relation_list = pickle.load(f)
+        # logging.info(
+        #     f"Loaded the slot relation list for value carry-over between services from {self.slots_relation_file}."
+        # )
 
         return dial_examples
 
