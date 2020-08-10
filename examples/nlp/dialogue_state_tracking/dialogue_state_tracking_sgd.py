@@ -322,9 +322,9 @@ dialogues_processor = data_processor.SGDDataProcessor(
     overwrite_dial_files=args.overwrite_dial_files,
 )
 # define model pipeline
-sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
+# sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
 sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size
+    embedding_dim=hidden_size, dropout=args.dropout
 )
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
@@ -348,7 +348,7 @@ def create_pipeline(dataset_split='train'):
     token_embeddings = pretrained_bert_model(
         input_ids=data.utterance_ids, attention_mask=data.utterance_mask, token_type_ids=data.utterance_segment,
     )
-    encoded_utterance, token_embeddings = sgd_encoder(hidden_states=token_embeddings)
+    # encoded_utterance, token_embeddings = sgd_encoder(hidden_states=token_embeddings)
     (
         logit_intent_status,
         logit_req_slot_status,
@@ -358,10 +358,8 @@ def create_pipeline(dataset_split='train'):
         logit_noncat_slot_start,
         logit_noncat_slot_end,
     ) = sgd_decoder(
-        encoded_utterance=encoded_utterance,
         token_embeddings=token_embeddings,
-        utterance_mask=data.utterance_mask
-    )
+        utterance_mask=data.utterance_mask)
 
     if dataset_split == 'train':
         loss = dst_loss(
