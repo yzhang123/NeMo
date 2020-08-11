@@ -157,6 +157,16 @@ class SGDDataProcessor(object):
             dial_examples = np.load(f, allow_pickle=True)
             f.close()
 
+        for ex in dial_examples:
+            del ex._tokenizer
+            del ex.schema_config
+            del ex.user_utterance
+            del ex.categorical_slot_id
+            del ex.system_utterance
+            del ex.noncategorical_slot_id
+            del ex.categorical_slot_value_id
+            del ex.requested_slot_id
+            del ex.intent_id
         gc.collect()
         if not os.path.exists(self.slots_relation_file):
             raise ValueError(
