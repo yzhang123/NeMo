@@ -26,6 +26,7 @@ import os
 import pickle
 import re
 import inflect
+import gc
 
 import numpy as np
 import torch
@@ -156,6 +157,7 @@ class SGDDataProcessor(object):
             dial_examples = np.load(f, allow_pickle=True)
             f.close()
 
+        gc.collect()
         if not os.path.exists(self.slots_relation_file):
             raise ValueError(
                 f"Slots relation file {self.slots_relation_file} does not exist. It is needed for the carry-over mechanism of state tracker for switches between services."
