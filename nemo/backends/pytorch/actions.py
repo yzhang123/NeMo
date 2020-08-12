@@ -9,6 +9,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import List, Optional
 
+import gc
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -424,6 +425,7 @@ class PtActions(Actions):
         Returns:
           None
         """
+        gc.collect()
         with torch.no_grad():
             # each call chain corresponds to a tensor in tensors_2_evaluate
             call_chain, _ = self.__get_top_sorted_modules_and_dataloader(hook=tensors_2_evaluate)
