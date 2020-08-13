@@ -184,7 +184,9 @@ parser.add_argument(
     type=str,
     help="specifies the reduction to apply to the final loss, choose 'mean' or 'sum'",
 )
-
+parser.add_argument(
+    "--subsample", action="store_true", help="subsample negative slot statuses to be same as active/dont care ones",
+)
 parser.add_argument(
     "--eval_epoch_freq", default=1, type=int, help="Frequency of evaluation",
 )
@@ -308,6 +310,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
     schemas=schemas,
     schema_config=schema_config,
     num2str=args.num2str,
+    subsample=args.subsample,
     overwrite_dial_files=args.overwrite_dial_files,
 )
 

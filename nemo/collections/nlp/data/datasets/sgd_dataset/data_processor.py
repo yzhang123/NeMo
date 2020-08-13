@@ -52,7 +52,7 @@ class SGDDataProcessor(object):
     """Data generator for SGD dialogues."""
 
     def __init__(
-        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False, num2str=False,
+        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False, num2str=False, subsample=False
     ):
         """
         Constructs SGD8DataProcessor
@@ -117,7 +117,7 @@ class SGDDataProcessor(object):
                     if not os.path.exists(dialogues_example_dir):
                         os.makedirs(dialogues_example_dir)
                     dial_examples, slots_relation_list = self._generate_dialog_examples(
-                        dataset, schemas
+                        dataset, schemas, subsample
                     )
                     with open(dial_file, "wb") as f:
                         np.save(f, dial_examples)
@@ -184,7 +184,7 @@ class SGDDataProcessor(object):
     def get_seen_services(self, dataset_split):
         return self._seen_services[dataset_split]
 
-    def _generate_dialog_examples(self, dataset, schemas):
+    def _generate_dialog_examples(self, dataset, schemas, subsample):
         """
         Returns a list of `InputExample`s of the data splits' dialogues.
         Args:
@@ -204,7 +204,7 @@ class SGDDataProcessor(object):
         for dialog_idx, dialog in enumerate(dialogs):
             if dialog_idx % 1000 == 0:
                 logging.info(f'Processed {dialog_idx} dialogues.')
-            examples.extend(self._create_examples_from_dialog(dialog, schemas, dataset, slot_carryover_candlist))
+            examples.extend(self._create_examples_from_dialog(dialog, schemas, dataset, slot_carryover_candlist, subsample))
 
         slots_relation_list = collections.defaultdict(list)
         for slots_relation, relation_size in slot_carryover_candlist.items():
@@ -218,7 +218,7 @@ class SGDDataProcessor(object):
 
         return examples, slots_relation_list
 
-    def _create_examples_from_dialog(self, dialog, schemas, dataset, slot_carryover_candlist):
+    def _create_examples_from_dialog(self, dialog, schemas, dataset, slot_carryover_candlist, subsample):
         """
         Create examples for every turn in the dialog.
         Args:
@@ -247,7 +247,7 @@ class SGDDataProcessor(object):
 
                 turn_id = "{}-{}-{:02d}".format(dataset, dialog_id, turn_idx)
                 turn_examples, prev_states, slot_carryover_values = self._create_examples_from_turn(
-                    turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas
+                    turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas, subsample
                 )
                 examples.extend(turn_examples)
 
@@ -283,7 +283,7 @@ class SGDDataProcessor(object):
         return state_update
 
     def _create_examples_from_turn(
-        self, turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas
+        self, turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas, subsample
     ):
         """
         Creates an example for each frame in the user turn.
@@ -357,6 +357,8 @@ class SGDDataProcessor(object):
                         task_example.add_requested_slots(user_frame)   
                         examples.append(task_example) 
                 if model_task == 2:
+                    off_slots = []
+                    on_slots = []
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
                         task_example = base_example.make_copy()
                         task_example.task_mask[model_task] = 1
@@ -371,7 +373,11 @@ class SGDDataProcessor(object):
                             slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
                         )
                         task_example.add_categorical_slots(state_update)
-                        examples.append(task_example)
+                        if task_example.categorical_slot_status == 0:
+                            off_slots.append(task_example)
+                        else:
+                            on_slots.append(task_example)
+                            examples.append(task_example)
                         old_example = task_example
 
                         for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
@@ -391,8 +397,16 @@ class SGDDataProcessor(object):
                                 task_example.add_categorical_slots(state_update)
                                 assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
                                 examples.append(task_example)
+
+                    if dataset_split == 'train' and subsample:
+                        num_on_slots = len(on_slots)
+                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+                    else:
+                        examples.extend(off_slots)
                     
                 if model_task == 4: # noncat slot status
+                    off_slots = []
+                    on_slots = []
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
                         task_example = base_example.make_copy()
                         task_example.task_mask[model_task] = 1
@@ -416,7 +430,11 @@ class SGDDataProcessor(object):
                         else:
                             system_span_boundaries = {}
                         task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
-                        examples.append(task_example)
+                        if task_example.noncategorical_slot_status == 0:
+                            off_slots.append(task_example)
+                        else:
+                            on_slots.append(task_example)
+                            examples.append(task_example)
 
                         if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
                             task_example = task_example.make_copy_of_non_categorical_features()
@@ -425,6 +443,11 @@ class SGDDataProcessor(object):
                             task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
                             task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
                             examples.append(task_example)
+                    if dataset_split == 'train' and subsample:
+                        num_on_slots = len(on_slots)
+                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+                    else:
+                        examples.extend(off_slots)    
 
             if service not in prev_states and int(turn_id_) > 0:
                 for slot_name, values in state_update.items():
