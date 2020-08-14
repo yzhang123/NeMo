@@ -41,6 +41,62 @@ MIN_SLOT_RELATION = 25
 
 __all__ = ['get_predicted_dialog', 'write_predictions_to_file']
 
+def get_carryover_value(
+    slot,
+    cur_usr_frame,
+    all_slot_values,
+    slots_relation_list,
+    frame_service_prev,
+    sys_slots_last,
+    sys_slots_agg,
+    sys_rets,
+):
+    extracted_value = None
+    if slot in sys_slots_agg[cur_usr_frame["service"]]:
+        extracted_value = sys_slots_agg[cur_usr_frame["service"]][slot]
+        # sys_rets[slot] = extracted_value
+
+    elif (cur_usr_frame["service"], slot) in slots_relation_list:
+        # return extracted_value
+        cands_list = slots_relation_list[(cur_usr_frame["service"], slot)]
+        for dmn, slt, freq in cands_list:
+            if freq < MIN_SLOT_RELATION:
+                continue
+            if dmn in all_slot_values and slt in all_slot_values[dmn]:
+                extracted_value = all_slot_values[dmn][slt]
+            if dmn in sys_slots_agg and slt in sys_slots_agg[dmn]:
+                extracted_value = sys_slots_agg[dmn][slt]
+            if dmn in sys_slots_last and slt in sys_slots_last[dmn]:
+                extracted_value = sys_slots_last[dmn][slt]
+    return extracted_value
+
+
+def carry_over_slots(
+    cur_usr_frame,
+    all_slot_values,
+    slots_relation_list,
+    frame_service_prev,
+    slot_values,
+    sys_slots_agg,
+    sys_slots_last,
+):
+    # return
+    if frame_service_prev == "" or frame_service_prev == cur_usr_frame["service"]:
+        return
+    for (service_dest, slot_dest), cands_list in slots_relation_list.items():
+        if service_dest != cur_usr_frame["service"]:
+            continue
+        for service_src, slot_src, freq in cands_list:
+            if freq < MIN_SLOT_RELATION or service_src != frame_service_prev:
+                continue
+
+            if service_src in all_slot_values and slot_src in all_slot_values[service_src]:
+                slot_values[slot_dest] = all_slot_values[service_src][slot_src]
+            if service_src in sys_slots_agg and slot_src in sys_slots_agg[service_src]:
+                slot_values[slot_dest] = sys_slots_agg[service_src][slot_src]
+            if service_src in sys_slots_last and slot_src in sys_slots_last[service_src]:
+                slot_values[slot_dest] = sys_slots_last[service_src][slot_src]
+
 
 def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg, cat_value_thresh):
     """
@@ -92,11 +148,18 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
     # Overwrite the labels in the turn with the predictions from the model. For
     # test set, these labels are missing from the data and hence they are added.
     dialog_id = dialog["dialogue_id"]
-    if state_tracker == "baseline":
-        sys_slots_agg = {} 
-    else:
-        sys_slots_agg = defaultdict(OrderedDict)
+    
+    all_slot_values = defaultdict(OrderedDict)
+    sys_slots_agg = defaultdict(OrderedDict)
+    sys_slots_last = defaultdict(OrderedDict)
     all_slot_values = defaultdict(dict)
+
+    sys_rets = OrderedDict()
+    true_state_prev = OrderedDict()
+    true_state = OrderedDict()
+    frame_service_prev = ""
+    slots_relation_list = schemas._slots_relation_list
+
     for turn_idx, turn in enumerate(dialog["turns"]):
         if turn["speaker"] == "SYSTEM" and state_tracker == 'nemotracker':
             # sys_slots_last = defaultdict(OrderedDict)
