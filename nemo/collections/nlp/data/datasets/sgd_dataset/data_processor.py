@@ -111,7 +111,6 @@ class SGDDataProcessor(object):
             dialogs = SGDDataProcessor.load_dialogues(dialog_paths, num2str=False)
             for dialog in dialogs:
                 self._seen_services[dataset].update(set(dialog['services']))
-
             if not os.path.exists(dial_file) or overwrite_dial_files:
                 logging.debug(f"Start generating the dialogue examples for {dataset} dataset.")
                 if master_device:
@@ -158,8 +157,13 @@ class SGDDataProcessor(object):
             dial_examples = np.load(f, allow_pickle=True)
             f.close()
 
+        train_overlap = 0
+        task_count = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
+        task_neg = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
         for ex in dial_examples:
             del ex._tokenizer
+            if ex.service_schema.service_name in self._seen_services["train"] :
+                train_overlap += 1
             del ex.schema_config
             del ex.user_utterance
             del ex.categorical_slot_id
@@ -168,6 +172,26 @@ class SGDDataProcessor(object):
             del ex.categorical_slot_value_id
             del ex.requested_slot_id
             del ex.intent_id
+            for i  in range(6):
+                task_count[i]+=ex.task_mask[i]
+                if ex.task_mask[i] and i == 0:
+                    task_neg[i] += ex.intent_status == 0
+                elif ex.task_mask[i] and i == 1:
+                    task_neg[i] += ex.requested_slot_status == 0
+                elif ex.task_mask[i] and i == 2:
+                    task_neg[i] += ex.categorical_slot_status == 0
+                elif ex.task_mask[i] and i == 3:
+                    task_neg[i] += ex.categorical_slot_value_status == 0
+                elif ex.task_mask[i] and i == 4:
+                    task_neg[i] += ex.noncategorical_slot_status == 0
+                 
+        
+
+        logging.info(f"{task_count[0]}, {task_count[1]}, {task_count[2]} + {task_count[4]}, {task_count[3]}, {task_count[5]} ")
+        
+        logging.info(f"neg {task_neg[0]}, {task_neg[1]}, {task_neg[2]} + {task_neg[4]}, {task_neg[3]}, {task_neg[5]} ")
+
+        logging.info(f"over lap of {dataset} with train is {train_overlap}/{len(dial_examples)}")
         gc.collect()
         if not os.path.exists(self.slots_relation_file):
             raise ValueError(

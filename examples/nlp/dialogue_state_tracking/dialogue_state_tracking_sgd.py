@@ -222,6 +222,9 @@ parser.add_argument(
     "--train_schema_emb", action="store_true", help="Specifies whether schema embeddings are trainables.",
 )
 parser.add_argument(
+    "--probavg", action="store_true", help="do prob avg",
+)
+parser.add_argument(
     "--add_attention_head",
     action="store_true",
     help="Whether to use attention when computing projections. When False, uses linear projection.",
@@ -422,7 +425,8 @@ def get_eval_callback(eval_dataset):
             args.joint_acc_across_turn,
             args.no_fuzzy_match,
             args.cat_value_thresh,
-            args.non_cat_value_thresh
+            args.non_cat_value_thresh,
+            args.probavg
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,

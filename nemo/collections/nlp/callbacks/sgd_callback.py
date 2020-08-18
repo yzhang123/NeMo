@@ -85,14 +85,14 @@ def eval_iter_callback(tensors, global_vars, schemas, eval_dataset):
     cat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_cat_slot_status'])
 
     predictions['cat_slot_status'] = torch.argmax(output['logit_cat_slot_status'], axis=-1)
-    predictions['cat_slot_status_p'] = torch.max(cat_slot_status_dist, axis=-1)[0]
+    predictions['cat_slot_status_p'] = cat_slot_status_dist
     predictions['cat_slot_value_status'] = torch.nn.Sigmoid()(output['logit_cat_slot_value_status'])
 
     # For non-categorical slots, the status of each slot and the indices for spans are output.
     noncat_slot_status_dist = torch.nn.Softmax(dim=-1)(output['logit_noncat_slot_status'])
 
     predictions['noncat_slot_status'] = torch.argmax(output['logit_noncat_slot_status'], axis=-1)
-    predictions['noncat_slot_status_p'] = torch.max(noncat_slot_status_dist, axis=-1)[0]
+    predictions['noncat_slot_status_p'] = noncat_slot_status_dist
 
     softmax = torch.nn.Softmax(dim=-1)
     start_scores = softmax(output['logit_noncat_slot_start'])
@@ -163,8 +163,9 @@ def eval_epochs_done_callback(
     schemas,
     joint_acc_across_turn,
     no_fuzzy_match,
-    cat_value_thresh=0.0,
-    non_cat_value_thresh=0.0
+    cat_value_thresh,
+    non_cat_value_thresh,
+    probavg
 ):
     # added for debugging
     in_domain_services = get_in_domain_services(
@@ -176,6 +177,7 @@ def eval_epochs_done_callback(
     os.makedirs(prediction_dir, exist_ok=True)
 
     input_json_files = SGDDataProcessor.get_dialogue_files(data_dir, eval_dataset, task_name)
+    
     pred_utils.write_predictions_to_file(
         global_vars['predictions'],
         input_json_files,
@@ -185,7 +187,8 @@ def eval_epochs_done_callback(
         eval_debug=eval_debug,
         in_domain_services=in_domain_services,
         cat_value_thresh=cat_value_thresh,
-        non_cat_value_thresh=non_cat_value_thresh
+        non_cat_value_thresh=non_cat_value_thresh,
+        probavg=probavg
     )
     metrics = evaluate(
         prediction_dir, data_dir, eval_dataset, in_domain_services, joint_acc_across_turn, no_fuzzy_match,

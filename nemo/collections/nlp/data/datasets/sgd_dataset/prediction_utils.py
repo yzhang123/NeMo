@@ -98,24 +98,35 @@ def carry_over_slots(
                 slot_values[slot_dest] = sys_slots_last[service_src][slot_src]
 
 
-def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg, cat_value_thresh):
+def set_cat_slot(predictions_status, predictions_value, cat_slots, cat_slot_values, sys_slots_agg, cat_value_thresh, probavg):
     """
     write predicted slot and values into out_dict 
     """
     out_dict = {}
     for slot_idx, slot in enumerate(cat_slots):
         slot_status = predictions_status[slot_idx][0]["cat_slot_status"]
+        slot_status_active_prob = predictions_status[slot_idx][0]["cat_slot_status_p"][STATUS_ACTIVE].item()
+        tmp = predictions_value[slot_idx]
+        value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
+        value_prob = max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_ACTIVE:
-            tmp = predictions_value[slot_idx]
-            value_idx = max(tmp, key=lambda k: tmp[k]['cat_slot_value_status'][0].item())
-            value_prob = max([v['cat_slot_value_status'][0].item() for k, v in predictions_value[slot_idx].items()])
-            if sys_slots_agg is None or value_prob > cat_value_thresh:
+            if not probavg:
+                if value_prob > cat_value_thresh:
+                    out_dict[slot] = cat_slot_values[slot][value_idx]
+                elif sys_slots_agg and slot in sys_slots_agg:
+                    out_dict[slot] = sys_slots_agg[slot]
+            else:
+                if (slot_status_active_prob + value_prob)/ 2 > cat_value_thresh:
+                    out_dict[slot] = cat_slot_values[slot][value_idx]
+                elif sys_slots_agg and slot in sys_slots_agg:
+                    # retrieval 
+                    out_dict[slot] = sys_slots_agg[slot]
+        else:
+            if probavg  and (slot_status_active_prob + value_prob)/ 2 > cat_value_thresh:
                 out_dict[slot] = cat_slot_values[slot][value_idx]
-            elif slot in sys_slots_agg:
-                # retrieval 
-                out_dict[slot] = sys_slots_agg[slot]
+
     return out_dict
 
 def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_utterance, sys_slots_agg, non_cat_value_thresh):
@@ -125,6 +136,7 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
     out_dict = {}
     for slot_idx, slot in enumerate(non_cat_slots):
         slot_status = predictions_status[slot_idx][0]["noncat_slot_status"]
+        slot_status_active_prob = predictions_status[slot_idx][0]["noncat_slot_status_p"][STATUS_ACTIVE].item()
         if slot_status == STATUS_DONTCARE:
             out_dict[slot] = STR_DONTCARE
         elif slot_status == STATUS_ACTIVE:
@@ -133,10 +145,11 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
             tok_end_idx = predictions_value[slot_idx][0]["noncat_slot_end"]
             ch_start_idx = predictions_value[slot_idx][0]["noncat_alignment_start"][tok_start_idx]
             ch_end_idx = predictions_value[slot_idx][0]["noncat_alignment_end"][tok_end_idx]
-            if ch_start_idx > 0 and ch_end_idx > 0:
+            if ch_start_idx > 0 and ch_end_idx > 0 and value_prob >  non_cat_value_thresh:
                 # Add span from the user utterance.
                 out_dict[slot] = user_utterance[ch_start_idx - 1 : ch_end_idx]
-            elif sys_slots_agg and slot in sys_slots_agg:
+            else:
+                if sys_slots_agg and slot in sys_slots_agg:
                     # system retrieval 
                     out_dict[slot] = sys_slots_agg[slot]
     return out_dict
@@ -144,15 +157,17 @@ def set_noncat_slot(predictions_status, predictions_value, non_cat_slots, user_u
 
 
 
-def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh):
+def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh, probavg):
     # Overwrite the labels in the turn with the predictions from the model. For
     # test set, these labels are missing from the data and hence they are added.
     dialog_id = dialog["dialogue_id"]
-    
-    all_slot_values = defaultdict(OrderedDict)
-    sys_slots_agg = defaultdict(OrderedDict)
-    sys_slots_last = defaultdict(OrderedDict)
-    all_slot_values = defaultdict(dict)
+    if state_tracker == "baseline":
+        sys_slots_agg = {} 
+    else:
+        sys_slots_agg = defaultdict(OrderedDict)
+        all_slot_values = defaultdict(OrderedDict)
+        sys_slots_agg = defaultdict(OrderedDict)
+        sys_slots_last = defaultdict(OrderedDict)
 
     sys_rets = OrderedDict()
     true_state_prev = OrderedDict()
@@ -197,7 +212,7 @@ def get_predicted_dialog(dialog, all_predictions, schemas, state_tracker, cat_va
                 # Add prediction for user goal (slot values).
                 # Categorical slots.
                 # cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh)
-                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=None, cat_value_thresh=cat_value_thresh)
+                cat_out_dict = set_cat_slot(predictions_status=predictions[2], predictions_value=predictions[3], cat_slots=service_schema.categorical_slots, cat_slot_values=service_schema.categorical_slot_values, sys_slots_agg=sys_slots_agg.get(frame["service"], None), cat_value_thresh=cat_value_thresh, probavg=probavg)
                 for k, v in cat_out_dict.items():
                     slot_values[k] = v
 
@@ -235,7 +250,7 @@ def get_requested_slot(predictions, slots):
 
 
 def write_predictions_to_file(
-    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services, cat_value_thresh, non_cat_value_thresh
+    predictions, input_json_files, output_dir, schemas, state_tracker, eval_debug, in_domain_services, cat_value_thresh, non_cat_value_thresh, probavg
 ):
     """Write the predicted dialogues as json files.
 
@@ -265,7 +280,7 @@ def write_predictions_to_file(
             logging.debug(f'{input_file_path} file is loaded')
             pred_dialogs = []
             for d in dialogs:
-                pred_dialog = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh)
+                pred_dialog = get_predicted_dialog(d, all_predictions, schemas, state_tracker, cat_value_thresh, non_cat_value_thresh, probavg)
                 pred_dialogs.append(pred_dialog)
             f.close()
         input_file_name = os.path.basename(input_file_path)
