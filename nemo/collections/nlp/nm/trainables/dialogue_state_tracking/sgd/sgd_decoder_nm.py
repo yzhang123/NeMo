@@ -167,6 +167,7 @@ class LogitsQA(nn.Module):
         logits = self.layer1(utterance_embedding)
         return logits
 
+
 class SGDDecoderNM(TrainableNM):
     """
     Baseline model for schema guided dialogue state tracking with option to make schema embeddings learnable
@@ -238,30 +239,21 @@ class SGDDecoderNM(TrainableNM):
 
         self.to(self._device)
 
-    def forward(
-        self,
-        encoded_utterance,
-        token_embeddings,
-        utterance_mask
-    ):
+    def forward(self, encoded_utterance, token_embeddings, utterance_mask):
         batch_size, emb_dim = encoded_utterance.size()
-        logit_intent_status = self._get_intents(
-            encoded_utterance
-        )
+        logit_intent_status = self._get_intents(encoded_utterance)
 
-        logit_req_slot_status = self._get_requested_slots(
-            encoded_utterance
-        )
+        logit_req_slot_status = self._get_requested_slots(encoded_utterance)
 
-        logit_cat_slot_status, logit_cat_slot_value_status = self._get_categorical_slot_goals(
-            encoded_utterance
-        )
+        logit_cat_slot_status, logit_cat_slot_value_status = self._get_categorical_slot_goals(encoded_utterance)
 
         (
             logit_noncat_slot_status,
             logit_noncat_slot_start,
             logit_noncat_slot_end,
-        ) = self._get_noncategorical_slot_goals(encoded_utterance=encoded_utterance, utterance_mask=utterance_mask, token_embeddings=token_embeddings)
+        ) = self._get_noncategorical_slot_goals(
+            encoded_utterance=encoded_utterance, utterance_mask=utterance_mask, token_embeddings=token_embeddings
+        )
 
         return (
             logit_intent_status,
@@ -278,37 +270,25 @@ class SGDDecoderNM(TrainableNM):
         Args:
             encoded_utterance - representation of untterance
         """
-        logits = self.intent_layer(
-            encoded_utterance=encoded_utterance,
-        )
+        logits = self.intent_layer(encoded_utterance=encoded_utterance,)
         return logits
 
     def _get_requested_slots(self, encoded_utterance):
         """Obtain logits for requested slots."""
 
-        logits = self.requested_slots_layer(
-            encoded_utterance=encoded_utterance
-        )
+        logits = self.requested_slots_layer(encoded_utterance=encoded_utterance)
         return logits
 
-    def _get_categorical_slot_goals(
-        self,
-        encoded_utterance
-    ):
+    def _get_categorical_slot_goals(self, encoded_utterance):
         """
         Obtain logits for status and values for categorical slots
         Slot status values: none, dontcare, active
         """
 
         # Predict the status of all categorical slots.
-        status_logits = self.slot_status_layer(
-            encoded_utterance=encoded_utterance
-        )
+        status_logits = self.slot_status_layer(encoded_utterance=encoded_utterance)
 
-
-        value_status_logits = self.cat_slot_value_layer(
-            encoded_utterance=encoded_utterance
-        )
+        value_status_logits = self.cat_slot_value_layer(encoded_utterance=encoded_utterance)
         return status_logits, value_status_logits
 
     def _get_noncategorical_slot_goals(self, encoded_utterance, utterance_mask, token_embeddings):
@@ -316,9 +296,7 @@ class SGDDecoderNM(TrainableNM):
         Obtain logits for status and slot spans for non-categorical slots.
         Slot status values: none, dontcare, active
         """
-        status_logits = self.slot_status_layer(
-            encoded_utterance=encoded_utterance
-        )
+        status_logits = self.slot_status_layer(encoded_utterance=encoded_utterance)
 
         # Project the combined embeddings to obtain logits, Shape: (batch_size, max_num_slots, max_num_tokens, 2)
         span_logits = self.noncat_layer1(token_embeddings)

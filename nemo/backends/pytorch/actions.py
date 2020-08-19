@@ -1,5 +1,6 @@
 # Copyright (c) 2019 NVIDIA Corporation
 import copy
+import gc
 import importlib
 import itertools
 import json
@@ -9,7 +10,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import List, Optional
 
-import gc
 import torch
 import torch.distributed as dist
 import torch.nn as nn

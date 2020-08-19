@@ -98,7 +98,7 @@ class InputExample(object):
         # Masks out categorical status for padded cat slots
         self.task_mask = [0] * schema_config["NUM_TASKS"]
 
-        self.noncategorical_slot_value_start = 0 
+        self.noncategorical_slot_value_start = 0
         # The index of the ending (inclusive) subword corresponding to the slot span
         # for a non-categorical slot value.
         self.noncategorical_slot_value_end = 0
@@ -110,7 +110,7 @@ class InputExample(object):
         self.requested_slot_id = 0
         # Takes value 1 if the corresponding slot is requested, 0 otherwise.
         self.requested_slot_status = STATUS_OFF
-        
+
         # Total number of intents present in the service.
         self.intent_id = 0
         # Takes value 1 if the intent is active, 0 otherwise.
@@ -122,14 +122,20 @@ class InputExample(object):
         seq_length = sum(self.utterance_mask)
         utt_toks = self._tokenizer.ids_to_tokens(self.utterance_ids[:seq_length])
         utt_tok_mask_pairs = list(zip(utt_toks, self.utterance_segment[:seq_length]))
-        active_intent = self.service_schema.get_intent_from_id(self.intent_id) if self.intent_status == STATUS_ACTIVE else ""
+        active_intent = (
+            self.service_schema.get_intent_from_id(self.intent_id) if self.intent_status == STATUS_ACTIVE else ""
+        )
         slot_values_in_state = {}
         if self.categorical_slot_status == STATUS_ACTIVE:
             slot_values_in_state[
                 self.service_schema.get_categorical_slot_from_id(self.categorical_slot_id)
-            ] = self.service_schema.get_categorical_slot_value_from_id(self.categorical_slot_id, self.categorical_slot_value_id)
+            ] = self.service_schema.get_categorical_slot_value_from_id(
+                self.categorical_slot_id, self.categorical_slot_value_id
+            )
         elif self.categorical_slot_status == STATUS_DONTCARE:
-            slot_values_in_state[self.service_schema.get_categorical_slot_from_id(self.categorical_slot_id)] = STR_DONTCARE
+            slot_values_in_state[
+                self.service_schema.get_categorical_slot_from_id(self.categorical_slot_id)
+            ] = STR_DONTCARE
         if self.noncategorical_slot_status == STATUS_ACTIVE:
             slot = self.service_schema.get_non_categorical_slot_from_id(self.noncategorical_slot_id)
             start_id = self.noncategorical_slot_value_start[idx]
@@ -183,7 +189,9 @@ class InputExample(object):
         # (including cls_token, setp_token, sep_token) is no more than max_utt_len
         is_too_long = truncate_seq_pair(system_tokens, user_tokens, max_utt_len - 3)
         if is_too_long:
-            logging.debug(f'Utterance sequence truncated in example id - {self.example_id} from {len(system_tokens) + len(user_tokens)}.')
+            logging.debug(
+                f'Utterance sequence truncated in example id - {self.example_id} from {len(system_tokens) + len(user_tokens)}.'
+            )
 
         # Construct the tokens, segment mask and valid token mask which will be
         # input to BERT, using the tokens for system utterance (sequence A) and
@@ -282,7 +290,6 @@ class InputExample(object):
         new_example.noncategorical_slot_value_end = self.noncategorical_slot_value_end
         return new_example
 
-
     def add_categorical_slots(self, state_update):
         """Add features for categorical slots."""
 
@@ -291,22 +298,23 @@ class InputExample(object):
             return
         slot = categorical_slots[self.categorical_slot_id]
         values = state_update.get(slot, [])
-        
+
         if not values:
             self.categorical_slot_status = STATUS_OFF
         elif values[0] == STR_DONTCARE:
             self.categorical_slot_status = STATUS_DONTCARE
         else:
             self.categorical_slot_status = STATUS_ACTIVE
-            self.categorical_slot_value_status = self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(
-                slot, values[0])
+            self.categorical_slot_value_status = (
+                self.categorical_slot_value_id == self.service_schema.get_categorical_slot_value_id(slot, values[0])
+            )
 
     def add_noncategorical_slots(self, state_update, system_span_boundaries, user_span_boundaries):
         """Add features for non-categorical slots."""
 
         noncategorical_slots = self.service_schema.non_categorical_slots
         slot = noncategorical_slots[self.noncategorical_slot_id]
-       
+
         values = state_update.get(slot, [])
         if not values:
             self.noncategorical_slot_status = STATUS_OFF

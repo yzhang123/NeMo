@@ -49,7 +49,14 @@ def get_str_example_id(eval_dataset, ids_to_service_names_dict, example_id_num):
     def format_turn_id(ex_id_num):
         dialog_id_1, dialog_id_2, turn_id, service_id, model_task_id, slot_intent_id, value_id = ex_id_num
         return "{}-{}_{:05d}-{:02d}-{}-{}-{}-{}".format(
-            eval_dataset, dialog_id_1, dialog_id_2, turn_id, ids_to_service_names_dict[service_id], model_task_id, slot_intent_id, value_id
+            eval_dataset,
+            dialog_id_1,
+            dialog_id_2,
+            turn_id,
+            ids_to_service_names_dict[service_id],
+            model_task_id,
+            slot_intent_id,
+            value_id,
         )
 
     return list(map(format_turn_id, tensor2list(example_id_num)))
@@ -165,7 +172,7 @@ def eval_epochs_done_callback(
     no_fuzzy_match,
     cat_value_thresh,
     non_cat_value_thresh,
-    probavg
+    probavg,
 ):
     # added for debugging
     in_domain_services = get_in_domain_services(
@@ -177,7 +184,7 @@ def eval_epochs_done_callback(
     os.makedirs(prediction_dir, exist_ok=True)
 
     input_json_files = SGDDataProcessor.get_dialogue_files(data_dir, eval_dataset, task_name)
-    
+
     pred_utils.write_predictions_to_file(
         global_vars['predictions'],
         input_json_files,
@@ -188,7 +195,7 @@ def eval_epochs_done_callback(
         in_domain_services=in_domain_services,
         cat_value_thresh=cat_value_thresh,
         non_cat_value_thresh=non_cat_value_thresh,
-        probavg=probavg
+        probavg=probavg,
     )
     metrics = evaluate(
         prediction_dir, data_dir, eval_dataset, in_domain_services, joint_acc_across_turn, no_fuzzy_match,

@@ -295,7 +295,7 @@ class BCEWithLogitsLossNM(LossNM):
             labels (long): ground truth labels
             loss_mask (bool/float/int): tensor to specify the masking
         """
-        
+
         logits_flatten = torch.flatten(logits, start_dim=0, end_dim=-2)
         labels_flatten = torch.flatten(labels, start_dim=0, end_dim=-1)
 

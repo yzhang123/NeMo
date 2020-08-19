@@ -23,7 +23,7 @@ https://github.com/google-research/google-research/blob/master/schema_guided_dst
 import torch
 
 from nemo import logging
-from nemo.backends.pytorch import LossNM, BCEWithLogitsLossNM, CrossEntropyLossNM
+from nemo.backends.pytorch import BCEWithLogitsLossNM, CrossEntropyLossNM, LossNM
 from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import STATUS_ACTIVE
 from nemo.core import ChannelType, LabelsType, LogitsType, NeuralType
 from nemo.utils.decorators import add_port_docs
@@ -130,7 +130,7 @@ class SGDDialogueStateLossNM(LossNM):
         logit_noncat_slot_end,
         noncategorical_slot_value_start,
         noncategorical_slot_value_end,
-        task_mask
+        task_mask,
     ):
         # Intent loss
         old_logit_intent_status = logit_intent_status
@@ -141,51 +141,56 @@ class SGDDialogueStateLossNM(LossNM):
             intent_loss = self._cross_entropy_bin(logit_intent_status.squeeze(dim=-1), intent_status)
 
         old_logit_req_slot_status = logit_req_slot_status
-        logit_req_slot_status, requested_slot_status = self._helper(logit_req_slot_status, requested_slot_status, task_mask[:, 1])
+        logit_req_slot_status, requested_slot_status = self._helper(
+            logit_req_slot_status, requested_slot_status, task_mask[:, 1]
+        )
         if len(requested_slot_status) == 0:
             requested_slot_loss = torch.clamp(torch.max(old_logit_req_slot_status.view(-1)), 0, 0)
-        else:            
-            requested_slot_loss = self._cross_entropy_bin(
-                logit_req_slot_status.squeeze(dim=-1), requested_slot_status
-            )
+        else:
+            requested_slot_loss = self._cross_entropy_bin(logit_req_slot_status.squeeze(dim=-1), requested_slot_status)
 
         old_logit_cat_slot_status = logit_cat_slot_status
-        logit_cat_slot_status, categorical_slot_status = self._helper(logit_cat_slot_status, categorical_slot_status, task_mask[:, 2])
+        logit_cat_slot_status, categorical_slot_status = self._helper(
+            logit_cat_slot_status, categorical_slot_status, task_mask[:, 2]
+        )
         if len(categorical_slot_status) == 0:
             cat_slot_status_loss = torch.clamp(torch.max(old_logit_cat_slot_status.view(-1)), 0, 0)
         else:
-            cat_slot_status_loss = self._cross_entropy(
-                logit_cat_slot_status,
-                categorical_slot_status,
-            )
+            cat_slot_status_loss = self._cross_entropy(logit_cat_slot_status, categorical_slot_status,)
         old_logit_cat_slot_value_status = logit_cat_slot_value_status
-        logit_cat_slot_value_status, categorical_slot_value_status = self._helper(logit_cat_slot_value_status, categorical_slot_value_status, task_mask[:, 3])
+        logit_cat_slot_value_status, categorical_slot_value_status = self._helper(
+            logit_cat_slot_value_status, categorical_slot_value_status, task_mask[:, 3]
+        )
         if len(categorical_slot_value_status) == 0:
             cat_slot_value_status_loss = torch.clamp(torch.max(old_logit_cat_slot_value_status.view(-1)), 0, 0)
         else:
-            cat_slot_value_status_loss = self._cross_entropy_bin(logit_cat_slot_value_status.squeeze(dim=-1), categorical_slot_value_status)
+            cat_slot_value_status_loss = self._cross_entropy_bin(
+                logit_cat_slot_value_status.squeeze(dim=-1), categorical_slot_value_status
+            )
 
         old_logit_noncat_slot_status = logit_noncat_slot_status
-        logit_noncat_slot_status, noncategorical_slot_status = self._helper(logit_noncat_slot_status, noncategorical_slot_status, task_mask[:, 4])
+        logit_noncat_slot_status, noncategorical_slot_status = self._helper(
+            logit_noncat_slot_status, noncategorical_slot_status, task_mask[:, 4]
+        )
         if len(noncategorical_slot_status) == 0:
             noncat_slot_status_loss = torch.clamp(torch.max(old_logit_noncat_slot_status.view(-1)), 0, 0)
         else:
-            noncat_slot_status_loss = self._cross_entropy(
-                logit_noncat_slot_status,
-                noncategorical_slot_status,
-            )
+            noncat_slot_status_loss = self._cross_entropy(logit_noncat_slot_status, noncategorical_slot_status,)
 
         _, max_num_tokens = logit_noncat_slot_start.size()
         old_logit_noncat_slot_start = logit_noncat_slot_start
-        logit_noncat_slot_start, noncategorical_slot_value_start = self._helper(logit_noncat_slot_start, noncategorical_slot_value_start, task_mask[:, 5])
+        logit_noncat_slot_start, noncategorical_slot_value_start = self._helper(
+            logit_noncat_slot_start, noncategorical_slot_value_start, task_mask[:, 5]
+        )
         if len(noncategorical_slot_value_start) == 0:
             span_start_loss = torch.clamp(torch.max(old_logit_noncat_slot_start.view(-1)), 0, 0)
         else:
             span_start_loss = self._cross_entropy(logit_noncat_slot_start, noncategorical_slot_value_start)
 
-        
         old_logit_noncat_slot_end = logit_noncat_slot_end
-        logit_noncat_slot_end, noncategorical_slot_value_end = self._helper(logit_noncat_slot_end, noncategorical_slot_value_end, task_mask[:, 5])
+        logit_noncat_slot_end, noncategorical_slot_value_end = self._helper(
+            logit_noncat_slot_end, noncategorical_slot_value_end, task_mask[:, 5]
+        )
         if len(noncategorical_slot_value_end) == 0:
             span_end_loss = torch.clamp(torch.max(old_logit_noncat_slot_end.view(-1)), 0, 0)
         else:

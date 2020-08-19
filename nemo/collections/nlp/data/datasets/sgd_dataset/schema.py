@@ -110,7 +110,7 @@ class ServiceSchema(object):
     @property
     def intent_descriptions(self):
         return self._intent_descriptions
-    
+
     @property
     def slot_descriptions(self):
         return self._slots_descriptions
@@ -151,9 +151,10 @@ class ServiceSchema(object):
 
     def get_categorical_slot_id(self, slot):
         return self._categorical_slot_ids[slot]
-        
+
     def get_non_categorical_slot_id(self, slot):
         return self._non_categorical_slot_ids[slot]
+
 
 class Schema(object):
     """Wrapper for schemas for all services in a dataset."""

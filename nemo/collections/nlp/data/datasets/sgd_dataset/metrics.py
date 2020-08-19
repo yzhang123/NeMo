@@ -72,7 +72,6 @@ JOINT_CAT_ACCURACY = "joint_cat_accuracy"
 JOINT_NONCAT_ACCURACY = "joint_noncat_accuracy"
 
 
-
 AVERAGE_CAT_STATUS_ACCURACY = "average_cat_status_accuracy"
 AVERAGE_CAT_VALUE_ACCURACY = "average_cat_value_accuracy"
 AVERAGE_NONCAT_STATUS_ACCURACY = "average_noncat_status_accuracy"
@@ -82,7 +81,6 @@ JOINT_CAT_STATUS_ACCURACY = "joint_cat_status_accuracy"
 JOINT_CAT_VALUE_ACCURACY = "joint_cat_value_accuracy"
 JOINT_NONCAT_STATUS_ACCURACY = "joint_noncat_status_accuracy"
 JOINT_NONCAT_VALUE_ACCURACY = "joint_noncat_value_accuracy"
-
 
 
 NAN_VAL = "NA"
@@ -309,29 +307,34 @@ def get_average_and_joint_goal_accuracy(frame_ref, frame_hyp, service, no_fuzzy_
     # joint cat status acc for both active and non active
     cat_status_acc = [acc for acc, cat in zip(list_status_acc, slot_cat) if cat]
     goal_acc[JOINT_CAT_STATUS_ACCURACY] = np.prod(cat_status_acc) if cat_status_acc else NAN_VAL
-    
+
     # non cat status acc for both active and non active
-    active_noncat_status_acc = [acc for acc, active, cat in zip(list_status_acc, slot_active, slot_cat) if not cat and active]
-    goal_acc[AVERAGE_NONCAT_STATUS_ACCURACY] = np.mean(active_noncat_status_acc) if active_noncat_status_acc else NAN_VAL
+    active_noncat_status_acc = [
+        acc for acc, active, cat in zip(list_status_acc, slot_active, slot_cat) if not cat and active
+    ]
+    goal_acc[AVERAGE_NONCAT_STATUS_ACCURACY] = (
+        np.mean(active_noncat_status_acc) if active_noncat_status_acc else NAN_VAL
+    )
     # joint non cat status acc for both active and non active
     noncat_status_acc = [acc for acc, cat in zip(list_status_acc, slot_cat) if not cat]
     goal_acc[JOINT_NONCAT_STATUS_ACCURACY] = np.prod(noncat_status_acc) if noncat_status_acc else NAN_VAL
 
-    
     # cat value acc for both active and non active
-    active_cat_val_acc = [acc for acc, active, cat in zip(list_value_acc, slot_active, slot_cat) if cat and acc > -0.5 and active]
+    active_cat_val_acc = [
+        acc for acc, active, cat in zip(list_value_acc, slot_active, slot_cat) if cat and acc > -0.5 and active
+    ]
     goal_acc[AVERAGE_CAT_VALUE_ACCURACY] = np.mean(active_cat_val_acc) if active_cat_val_acc else NAN_VAL
     # joint cat value acc for both active and non active
     cat_val_acc = [acc for acc, cat in zip(list_value_acc, slot_cat) if cat and acc > -0.5]
     goal_acc[JOINT_CAT_VALUE_ACCURACY] = np.prod(cat_val_acc) if cat_val_acc else NAN_VAL
 
-    
     # cat non value acc for both active and non active
-    active_noncat_val_acc = [acc for acc, active, cat in zip(list_value_acc, slot_active, slot_cat) if not cat and acc > -0.5 and active]
+    active_noncat_val_acc = [
+        acc for acc, active, cat in zip(list_value_acc, slot_active, slot_cat) if not cat and acc > -0.5 and active
+    ]
     goal_acc[AVERAGE_NONCAT_VALUE_ACCURACY] = np.mean(active_noncat_val_acc) if active_noncat_val_acc else NAN_VAL
     # joint non cat value acc for both active and non active
     noncat_val_acc = [acc for acc, cat in zip(list_value_acc, slot_cat) if not cat and acc > -0.5]
     goal_acc[JOINT_NONCAT_VALUE_ACCURACY] = np.prod(noncat_val_acc) if noncat_val_acc else NAN_VAL
-
 
     return goal_acc

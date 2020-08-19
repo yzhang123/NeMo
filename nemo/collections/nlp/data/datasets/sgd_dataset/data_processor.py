@@ -21,13 +21,13 @@ https://github.com/google-research/google-research/blob/master/schema_guided_dst
 """
 
 import collections
+import gc
 import json
 import os
 import pickle
 import re
-import inflect
-import gc
 
+import inflect
 import numpy as np
 import torch
 
@@ -53,7 +53,16 @@ class SGDDataProcessor(object):
     """Data generator for SGD dialogues."""
 
     def __init__(
-        self, task_name, data_dir, dialogues_example_dir, tokenizer, schemas, schema_config, overwrite_dial_files=False, num2str=False, subsample=False
+        self,
+        task_name,
+        data_dir,
+        dialogues_example_dir,
+        tokenizer,
+        schemas,
+        schema_config,
+        overwrite_dial_files=False,
+        num2str=False,
+        subsample=False,
     ):
         """
         Constructs SGD8DataProcessor
@@ -67,7 +76,7 @@ class SGDDataProcessor(object):
         """
         self.data_dir = data_dir
         self.dialogues_examples_dir = dialogues_example_dir
-        self._num2str=num2str
+        self._num2str = num2str
 
         self._task_name = task_name
         # {'MAX_NUM_CAT_SLOT': 6, 'MAX_NUM_NONCAT_SLOT': 12, 'MAX_NUM_VALUE_PER_CAT_SLOT': 12, 'MAX_NUM_INTENT': 4, 'EMBEDDING_DIMENSION': 768, 'MAX_SEQ_LENGTH': 80}
@@ -116,9 +125,7 @@ class SGDDataProcessor(object):
                 if master_device:
                     if not os.path.exists(dialogues_example_dir):
                         os.makedirs(dialogues_example_dir)
-                    dial_examples, slots_relation_list = self._generate_dialog_examples(
-                        dataset, schemas, subsample
-                    )
+                    dial_examples, slots_relation_list = self._generate_dialog_examples(dataset, schemas, subsample)
                     with open(dial_file, "wb") as f:
                         np.save(f, dial_examples)
 
@@ -158,11 +165,11 @@ class SGDDataProcessor(object):
             f.close()
 
         train_overlap = 0
-        task_count = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
-        task_neg = {0:0, 1:0, 2:0, 3:0, 4:0, 5:0}
+        task_count = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+        task_neg = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
         for ex in dial_examples:
             del ex._tokenizer
-            if ex.service_schema.service_name in self._seen_services["train"] :
+            if ex.service_schema.service_name in self._seen_services["train"]:
                 train_overlap += 1
             del ex.schema_config
             del ex.user_utterance
@@ -172,8 +179,8 @@ class SGDDataProcessor(object):
             del ex.categorical_slot_value_id
             del ex.requested_slot_id
             del ex.intent_id
-            for i  in range(6):
-                task_count[i]+=ex.task_mask[i]
+            for i in range(6):
+                task_count[i] += ex.task_mask[i]
                 if ex.task_mask[i] and i == 0:
                     task_neg[i] += ex.intent_status == 0
                 elif ex.task_mask[i] and i == 1:
@@ -184,11 +191,11 @@ class SGDDataProcessor(object):
                     task_neg[i] += ex.categorical_slot_value_status == 0
                 elif ex.task_mask[i] and i == 4:
                     task_neg[i] += ex.noncategorical_slot_status == 0
-                 
-        
 
-        logging.info(f"{task_count[0]}, {task_count[1]}, {task_count[2]} + {task_count[4]}, {task_count[3]}, {task_count[5]} ")
-        
+        logging.info(
+            f"{task_count[0]}, {task_count[1]}, {task_count[2]} + {task_count[4]}, {task_count[3]}, {task_count[5]} "
+        )
+
         logging.info(f"neg {task_neg[0]}, {task_neg[1]}, {task_neg[2]} + {task_neg[4]}, {task_neg[3]}, {task_neg[5]} ")
 
         logging.info(f"over lap of {dataset} with train is {train_overlap}/{len(dial_examples)}")
@@ -229,7 +236,9 @@ class SGDDataProcessor(object):
         for dialog_idx, dialog in enumerate(dialogs):
             if dialog_idx % 1000 == 0:
                 logging.info(f'Processed {dialog_idx} dialogues.')
-            examples.extend(self._create_examples_from_dialog(dialog, schemas, dataset, slot_carryover_candlist, subsample))
+            examples.extend(
+                self._create_examples_from_dialog(dialog, schemas, dataset, slot_carryover_candlist, subsample)
+            )
 
         slots_relation_list = collections.defaultdict(list)
         for slots_relation, relation_size in slot_carryover_candlist.items():
@@ -272,7 +281,14 @@ class SGDDataProcessor(object):
 
                 turn_id = "{}-{}-{:02d}".format(dataset, dialog_id, turn_idx)
                 turn_examples, prev_states, slot_carryover_values = self._create_examples_from_turn(
-                    turn_id, system_utterance, user_utterance, system_frames, user_frames, prev_states, schemas, subsample
+                    turn_id,
+                    system_utterance,
+                    user_utterance,
+                    system_frames,
+                    user_frames,
+                    prev_states,
+                    schemas,
+                    subsample,
                 )
                 examples.extend(turn_examples)
 
@@ -333,8 +349,10 @@ class SGDDataProcessor(object):
         examples = []
         slot_carryover_values = collections.defaultdict(list)
         for service, user_frame in user_frames.items():
-            
-            base_example = InputExample(schema_config=self.schema_config, is_real_example=True, tokenizer=self._tokenizer,)
+
+            base_example = InputExample(
+                schema_config=self.schema_config, is_real_example=True, tokenizer=self._tokenizer,
+            )
             base_example.service_schema = schemas.get_service_schema(service)
             system_frame = system_frames.get(service, None)
             state = user_frame["state"]["slot_values"]
@@ -359,14 +377,21 @@ class SGDDataProcessor(object):
                         task_example.intent_id = intent_id
                         task_example.example_id += f"-{model_task}-{intent_id}-0"
                         task_example.example_id_num.extend([model_task, intent_id, 0])
-                        intent_description = intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
+                        intent_description = (
+                            intent + " " + schemas.get_service_schema(service).intent_descriptions[intent]
+                        )
                         intent_tokens, intent_alignments, intent_inv_alignments = self._tokenize(intent_description)
                         task_example.add_utterance_features(
-                            intent_tokens, intent_inv_alignments, system_user_tokens, system_user_inv_alignments, intent_description, system_user_utterance
+                            intent_tokens,
+                            intent_inv_alignments,
+                            system_user_tokens,
+                            system_user_inv_alignments,
+                            intent_description,
+                            system_user_utterance,
                         )
                         task_example.add_intents(user_frame)
                         examples.append(task_example)
-                    
+
                 if model_task == 1:
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).slots):
                         task_example = base_example.make_copy()
@@ -377,25 +402,35 @@ class SGDDataProcessor(object):
                         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, user_tokens, user_inv_alignments, slot_description, user_utterance
+                            slot_tokens,
+                            slot_inv_alignments,
+                            user_tokens,
+                            user_inv_alignments,
+                            slot_description,
+                            user_utterance,
                         )
-                        task_example.add_requested_slots(user_frame)   
-                        examples.append(task_example) 
+                        task_example.add_requested_slots(user_frame)
+                        examples.append(task_example)
                 if model_task == 2:
                     off_slots = []
                     on_slots = []
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).categorical_slots):
                         task_example = base_example.make_copy()
                         task_example.task_mask[model_task] = 1
-                        
-                        assert(task_example.task_mask == [0, 0, 1, 0, 0, 0])
+
+                        assert task_example.task_mask == [0, 0, 1, 0, 0, 0]
                         task_example.categorical_slot_id = slot_id
                         task_example.example_id += f"-{model_task}-{slot_id}-0"
                         task_example.example_id_num.extend([model_task, slot_id, 0])
                         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                            slot_tokens,
+                            slot_inv_alignments,
+                            system_user_tokens,
+                            system_user_inv_alignments,
+                            slot_description,
+                            system_user_utterance,
                         )
                         task_example.add_categorical_slots(state_update)
                         if task_example.categorical_slot_status == 0:
@@ -405,56 +440,82 @@ class SGDDataProcessor(object):
                             examples.append(task_example)
                         old_example = task_example
 
-                        for value_id, value in enumerate(schemas.get_service_schema(service).get_categorical_slot_values(slot)):
+                        for value_id, value in enumerate(
+                            schemas.get_service_schema(service).get_categorical_slot_values(slot)
+                        ):
                             if dataset_split != 'train' or task_example.categorical_slot_status == 1:
                                 task_example = old_example.make_copy_of_categorical_features()
                                 task_example.task_mask[3] = 1
-                                assert(task_example.task_mask == [0, 0, 0, 1, 0, 0])
+                                assert task_example.task_mask == [0, 0, 0, 1, 0, 0]
                                 task_example.categorical_slot_id = slot_id
                                 task_example.categorical_slot_value_id = value_id
                                 task_example.example_id = base_example.example_id + f"-3-{slot_id}-{value_id}"
                                 task_example.example_id_num = base_example.example_id_num + [3, slot_id, value_id]
-                                slot_description = slot + " " + value # add slot description
+                                slot_description = slot + " " + value  # add slot description
                                 slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                                 task_example.add_utterance_features(
-                                    slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                                    slot_tokens,
+                                    slot_inv_alignments,
+                                    system_user_tokens,
+                                    system_user_inv_alignments,
+                                    slot_description,
+                                    system_user_utterance,
                                 )
                                 task_example.add_categorical_slots(state_update)
-                                assert(task_example.categorical_slot_status == old_example.categorical_slot_status)
+                                assert task_example.categorical_slot_status == old_example.categorical_slot_status
                                 examples.append(task_example)
 
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+                        examples.extend(
+                            np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots)))
+                        )
                     else:
                         examples.extend(off_slots)
-                    
-                if model_task == 4: # noncat slot status
+
+                if model_task == 4:  # noncat slot status
                     off_slots = []
                     on_slots = []
                     for slot_id, slot in enumerate(schemas.get_service_schema(service).non_categorical_slots):
                         task_example = base_example.make_copy()
                         task_example.task_mask[model_task] = 1
-                        assert(task_example.task_mask == [0, 0, 0, 0, 1, 0])
+                        assert task_example.task_mask == [0, 0, 0, 0, 1, 0]
                         task_example.noncategorical_slot_id = slot_id
                         task_example.example_id += f"-{model_task}-{slot_id}-0"
                         task_example.example_id_num.extend([model_task, slot_id, 0])
                         slot_description = slot + " " + schemas.get_service_schema(service).slot_descriptions[slot]
                         slot_tokens, slot_alignments, slot_inv_alignments = self._tokenize(slot_description)
                         task_example.add_utterance_features(
-                            slot_tokens, slot_inv_alignments, system_user_tokens, system_user_inv_alignments, slot_description, system_user_utterance
+                            slot_tokens,
+                            slot_inv_alignments,
+                            system_user_tokens,
+                            system_user_inv_alignments,
+                            slot_description,
+                            system_user_utterance,
                         )
 
                         user_span_boundaries = self._find_subword_indices(
-                            state_update, user_utterance, user_frame["slots"], user_alignments, user_tokens, 2 + len(slot_tokens) + len(system_tokens)
+                            state_update,
+                            user_utterance,
+                            user_frame["slots"],
+                            user_alignments,
+                            user_tokens,
+                            2 + len(slot_tokens) + len(system_tokens),
                         )
-                        if system_frame is not None: 
+                        if system_frame is not None:
                             system_span_boundaries = self._find_subword_indices(
-                                state_update, system_utterance, system_frame["slots"], system_alignments, system_tokens, 2 + len(slot_tokens)
+                                state_update,
+                                system_utterance,
+                                system_frame["slots"],
+                                system_alignments,
+                                system_tokens,
+                                2 + len(slot_tokens),
                             )
                         else:
                             system_span_boundaries = {}
-                        task_example.add_noncategorical_slots(state_update, user_span_boundaries, system_span_boundaries)
+                        task_example.add_noncategorical_slots(
+                            state_update, user_span_boundaries, system_span_boundaries
+                        )
                         if task_example.noncategorical_slot_status == 0:
                             off_slots.append(task_example)
                         else:
@@ -464,15 +525,17 @@ class SGDDataProcessor(object):
                         if dataset_split != 'train' or task_example.noncategorical_slot_status == 1:
                             task_example = task_example.make_copy_of_non_categorical_features()
                             task_example.task_mask[5] = 1
-                            assert(task_example.task_mask == [0, 0, 0, 0, 0, 1])
+                            assert task_example.task_mask == [0, 0, 0, 0, 0, 1]
                             task_example.example_id = base_example.example_id + f"-5-{slot_id}-0"
                             task_example.example_id_num = base_example.example_id_num + [5, slot_id, 0]
                             examples.append(task_example)
                     if dataset_split == 'train' and subsample:
                         num_on_slots = len(on_slots)
-                        examples.extend(np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots))))
+                        examples.extend(
+                            np.random.choice(off_slots, replace=False, size=min(max(num_on_slots, 1), len(off_slots)))
+                        )
                     else:
-                        examples.extend(off_slots)    
+                        examples.extend(off_slots)
 
             if service not in prev_states and int(turn_id_) > 0:
                 for slot_name, values in state_update.items():
@@ -537,7 +600,9 @@ class SGDDataProcessor(object):
         # Filter out empty tokens and obtain aligned character index for each token.
         alignments = {}
         char_index = 0
-        bert_tokens = [] # ['I', 'am', 'feeling', 'hungry', 'so', 'I', 'would', 'like', 'to', 'find', 'a', 'place', 'to', 'eat', '.']
+        bert_tokens = (
+            []
+        )  # ['I', 'am', 'feeling', 'hungry', 'so', 'I', 'would', 'like', 'to', 'find', 'a', 'place', 'to', 'eat', '.']
         # These lists store inverse alignments to be used during inference.
         bert_tokens_start_chars = []
         bert_tokens_end_chars = []

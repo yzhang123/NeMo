@@ -27,10 +27,17 @@ import os
 import nemo.collections.nlp as nemo_nlp
 import nemo.collections.nlp.data.datasets.sgd_dataset.data_processor as data_processor
 from nemo.collections.nlp.callbacks.sgd_callback import eval_epochs_done_callback, eval_iter_callback
-from nemo.collections.nlp.data.datasets.sgd_dataset.schema_processor import SchemaPreprocessor
 from nemo.collections.nlp.data.datasets.sgd_dataset import schema
+from nemo.collections.nlp.data.datasets.sgd_dataset.schema_processor import SchemaPreprocessor
 from nemo.collections.nlp.nm.trainables import SGDDecoderNM, SGDEncoderNM
-from nemo.core import Backend, CheckpointCallback, EvaluatorCallback, NeuralModuleFactory, SimpleLossLoggerCallback, WandbCallback
+from nemo.core import (
+    Backend,
+    CheckpointCallback,
+    EvaluatorCallback,
+    NeuralModuleFactory,
+    SimpleLossLoggerCallback,
+    WandbCallback,
+)
 from nemo.utils import logging
 from nemo.utils.lr_policies import get_lr_policy
 
@@ -237,7 +244,9 @@ parser.add_argument(
     "--checkpoints_to_keep", default=1, type=int, help="The number of last checkpoints to keep",
 )
 parser.add_argument(
-    "--num2str", action="store_true", help="make categorical values that are numbers in text to string, e.g. 2-> 2 two",
+    "--num2str",
+    action="store_true",
+    help="make categorical values that are numbers in text to string, e.g. 2-> 2 two",
 )
 
 parser.add_argument("--exp_name", default="SGD_Baseline", type=str)
@@ -319,9 +328,7 @@ dialogues_processor = data_processor.SGDDataProcessor(
 
 # define model pipeline
 sgd_encoder = SGDEncoderNM(hidden_size=hidden_size, dropout=args.dropout)
-sgd_decoder = SGDDecoderNM(
-    embedding_dim=hidden_size
-)
+sgd_decoder = SGDDecoderNM(embedding_dim=hidden_size)
 dst_loss = nemo_nlp.nm.losses.SGDDialogueStateLossNM(reduction=args.loss_reduction)
 
 
@@ -350,9 +357,7 @@ def create_pipeline(dataset_split='train'):
         logit_noncat_slot_start,
         logit_noncat_slot_end,
     ) = sgd_decoder(
-        encoded_utterance=encoded_utterance,
-        token_embeddings=token_embeddings,
-        utterance_mask=data.utterance_mask
+        encoded_utterance=encoded_utterance, token_embeddings=token_embeddings, utterance_mask=data.utterance_mask
     )
 
     if dataset_split == 'train':
@@ -371,7 +376,7 @@ def create_pipeline(dataset_split='train'):
             logit_noncat_slot_end=logit_noncat_slot_end,
             noncategorical_slot_value_start=data.noncategorical_slot_value_start,
             noncategorical_slot_value_end=data.noncategorical_slot_value_end,
-            task_mask=data.task_mask
+            task_mask=data.task_mask,
         )
         tensors = [loss]
     else:
@@ -387,7 +392,7 @@ def create_pipeline(dataset_split='train'):
             logit_cat_slot_value_status,
             logit_noncat_slot_status,
             logit_noncat_slot_start,
-            logit_noncat_slot_end
+            logit_noncat_slot_end,
         ]
 
     steps_per_epoch = math.ceil(len(datalayer) / (args.train_batch_size * args.num_gpus * args.batches_per_step))
@@ -426,7 +431,7 @@ def get_eval_callback(eval_dataset):
             args.no_fuzzy_match,
             args.cat_value_thresh,
             args.non_cat_value_thresh,
-            args.probavg
+            args.probavg,
         ),
         tb_writer=nf.tb_writer,
         eval_step=args.eval_epoch_freq * steps_per_epoch,

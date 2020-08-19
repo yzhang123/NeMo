@@ -69,7 +69,6 @@ class SGDDataLayer(DataLayerNM):
             "task_mask": NeuralType(('B', 'T'), ChannelType()),
         }
 
-
     def __init__(
         self,
         dataset_split,
