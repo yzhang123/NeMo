@@ -20,3 +20,4 @@ from nemo.collections.nlp.models.language_modeling.transformer_lm_model import T
 from nemo.collections.nlp.models.question_answering.qa_model import QAModel
 from nemo.collections.nlp.models.text_classification import TextClassificationModel
 from nemo.collections.nlp.models.token_classification import PunctuationCapitalizationModel, TokenClassificationModel
+from nemo.collections.nlp.models.text_normalization import TextNormalizationModel
