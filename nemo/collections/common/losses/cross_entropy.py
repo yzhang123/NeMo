@@ -54,7 +54,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss, Serialization, Typing):
         super().__init__(weight=weight, reduction=reduction)
         self._logits_dim = logits_ndim
 
-    @typecheck()
+    # @typecheck()
     def forward(self, logits, labels, loss_mask=None):
         """
         Args:
