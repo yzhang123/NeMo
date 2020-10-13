@@ -32,7 +32,7 @@ from nemo.collections.common.tokenizers.tokenizer_spec import TokenizerSpec
 # )
 from nemo.collections.nlp.parts.utils_funcs import list2str
 from nemo.core.classes import Dataset
-from nemo.core.neural_types import ChannelType, LabelsType, MaskType, NeuralType
+from nemo.core.neural_types import ChannelType, LabelsType, MaskType, NeuralType, LengthsType
 from nemo.utils import logging
 
 __all__ = ['TextNormalizationDataset']
@@ -74,11 +74,14 @@ class TextNormalizationDataset(Dataset):
                """
         return {
             'sent_ids': NeuralType(('B', 'T'), ChannelType()),
-            'tag_ids': NeuralType(('B', 'T'), ChannelType()),
-            'unnormalized_ids': NeuralType(('B', 'T'), MaskType()),
-            'normalized_ids': NeuralType(('B', 'T'), MaskType()),
-            'l_context_ids': NeuralType(('B'), MaskType()),
-            'r_context_ids': NeuralType(('B'), LabelsType()),
+            'tag_ids': NeuralType(('B', 'T'), LabelsType()),
+            'sent_lens': NeuralType(('B'), LengthsType()),
+            'unnormalized_ids': NeuralType(('B', 'T'), ChannelType()),
+            'char_lens_input': NeuralType(('B'), LengthsType()),
+            'normalized_ids': NeuralType(('B', 'T'), LabelsType()),
+            'char_lens_output': NeuralType(('B'), LengthsType()),
+            'l_context_ids': NeuralType(('B'), ChannelType()),
+            'r_context_ids': NeuralType(('B'), ChannelType()),
         }
 
     def __init__(
