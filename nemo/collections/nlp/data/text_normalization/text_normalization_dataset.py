@@ -18,6 +18,7 @@ import os
 import pickle
 import random
 from typing import Dict, List, Optional
+from torch.nn.utils.rnn import pad_sequence
 
 import numpy as np
 import torch
@@ -71,15 +72,13 @@ class TextNormalizationDataset(Dataset):
     def output_types(self) -> Optional[Dict[str, NeuralType]]:
         """Returns definitions of module output ports.
                """
-
-        sent_ids, tag_ids, unnormalized_ids, normalized_ids, l_context_id, r_context_id
         return {
             'sent_ids': NeuralType(('B', 'T'), ChannelType()),
             'tag_ids': NeuralType(('B', 'T'), ChannelType()),
             'unnormalized_ids': NeuralType(('B', 'T'), MaskType()),
             'normalized_ids': NeuralType(('B', 'T'), MaskType()),
-            'l_context_id': NeuralType(('B'), MaskType()),
-            'r_context_id': NeuralType(('B'), LabelsType()),
+            'l_context_ids': NeuralType(('B'), MaskType()),
+            'r_context_ids': NeuralType(('B'), LabelsType()),
         }
 
     def __init__(
@@ -128,6 +127,8 @@ class TextNormalizationDataset(Dataset):
             features = pickle.load(open(features_pkl, 'rb'))
             logging.info(f'features restored from {features_pkl}')
 
+        self.tokenizer_sent = tokenizer_sent
+        self.tokenizer_char = tokenizer_char
         self.features = features
     def __len__(self):
         return len(self.features)
@@ -140,6 +141,78 @@ class TextNormalizationDataset(Dataset):
             np.array(self.features[idx][3]),
             np.array(self.features[idx][4]),
             np.array(self.features[idx][5]),
+        )
+
+    def _collate_fn(self, batch):
+        """collate batch of sent_ids, tag_ids, unnormalized_ids, normalized_ids l_context_id r_context_id
+        """
+
+        bs = len(batch)
+        sent_lens = [0 for _ in range(bs)]
+        char_lens_input = [0 for _ in range(bs)]
+        char_lens_output = [0 for _ in range(bs)]
+        max_length_sent = 0
+        max_length_chars_input = 0
+        max_length_chars_output = 0
+        for i in range(bs):
+            sent_ids, tag_ids, unnormalized_ids, normalized_ids, _, _ = batch[i]
+            sent_lens[i] = len(sent_ids)
+            char_lens_input = len(unnormalized_ids)
+            char_lens_output = len(normalized_ids)
+            if len(sent_ids) > max_length_sent:
+                max_length_sent = len(sent_ids)
+            if len(unnormalized_ids) > max_length_chars_input:
+                max_length_chars_input = len(unnormalized_ids)
+            if len(normalized_ids) > max_length_chars_output:
+                max_length_chars_output = len(normalized_ids)
+
+        sent_ids_padded = []
+        tag_ids_padded = []
+        unnormalized_ids_padded = []
+        normalized_ids_padded = []
+        l_context_ids = [0 for _ in range(bs)]
+        r_context_ids = [0 for _ in range(bs)]
+        for i in range(bs):
+            sent_ids, tag_ids, unnormalized_ids, normalized_ids, l_context_id, r_context_id = batch[i]
+            l_context_ids[i] = l_context_id
+            r_context_ids[i] = r_context_id
+            
+            assert(len(sent_ids) == len(tag_ids))
+            if len(sent_ids) < max_length_sent:
+                pad_width = max_length_sent - len(sent_ids)
+                sent_ids_padded.append(np.pad(sent_ids, pad_width=[0, pad_width], constant_values=self.tokenizer_sent.pad_id))
+                tag_ids_padded.append(np.pad(tag_ids, pad_width=[0, pad_width], constant_values=self.tokenizer_sent.pad_id))
+            else:
+                sent_ids_padded.append(sent_ids)
+                tag_ids_padded.append(tag_ids)
+
+            if len(unnormalized_ids) < max_length_chars_input:
+                pad_width = max_length_chars_input - len(unnormalized_ids)
+                unnormalized_ids_padded.append(np.pad(unnormalized_ids, pad_width=[0, pad_width], constant_values=self.tokenizer_char.pad_id))
+            else:
+                unnormalized_ids_padded.append(unnormalized_ids)
+            
+            if len(normalized_ids) < max_length_chars_output:
+                pad_width = max_length_chars_output - len(normalized_ids)
+                normalized_ids_padded.append(np.pad(normalized_ids, pad_width=[0, pad_width], constant_values=self.tokenizer_char.pad_id))
+            else:
+                normalized_ids_padded.append(normalized_ids)
+        
+        # sent_ids_padded = pad_sequence(sent_ids, batch_first=False, padding_value=self.tokenizer_sent.pad_id)
+        # tag_ids_padded = pad_sequence(tag_ids, batch_first=False, padding_value=-1)
+        # unnormalized_ids_padded = pad_sequence(unnormalized_ids, batch_first=False, padding_value=self.tokenizer_char.pad_id)
+        # normalized_ids_padded = pad_sequence(normalized_ids, batch_first=False, padding_value=self.tokenizer_char.pad_id)
+
+        return (
+            torch.LongTensor(sent_ids_padded),
+            torch.LongTensor(tag_ids_padded),
+            torch.LongTensor(sent_lens),
+            torch.LongTensor(unnormalized_ids_padded),
+            torch.LongTensor(char_lens_input),
+            torch.LongTensor(normalized_ids_padded),
+            torch.LongTensor(char_lens_output),
+            torch.LongTensor(np.asarray(l_context_ids)),
+            torch.LongTensor(np.asarray(r_context_ids)),
         )
 
 
