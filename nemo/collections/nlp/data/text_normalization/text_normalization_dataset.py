@@ -160,8 +160,8 @@ class TextNormalizationDataset(Dataset):
         for i in range(bs):
             sent_ids, tag_ids, unnormalized_ids, normalized_ids, _, _ = batch[i]
             sent_lens[i] = len(sent_ids)
-            char_lens_input = len(unnormalized_ids)
-            char_lens_output = len(normalized_ids)
+            char_lens_input[i] = len(unnormalized_ids)
+            char_lens_output[i] = len(normalized_ids)
             if len(sent_ids) > max_length_sent:
                 max_length_sent = len(sent_ids)
             if len(unnormalized_ids) > max_length_chars_input:
