@@ -1128,16 +1128,12 @@ class AudioAndEmbeddingToBPEDataset(AudioToBPEDataset):
             if len(self.manifest_processor.collection.speaker_mapping[target_speaker]) == 1:
                 raise ValueError("target speaker only has one utterance")
 
-            other_utterance_index = np.random.choice(
-                self.manifest_processor.collection.speaker_mapping[target_speaker]
+            random_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+            
+            other_utterance_file_index = np.random.choice(
+                self.manifest_processor.collection.speaker_mapping[random_speaker_id]
             )
-            i = 0
-            while other_utterance_index == index and i < 100:
-                other_utterance_index = np.random.choice(
-                    self.manifest_processor.collection.speaker_mapping[target_speaker]
-                )
-                i += 1
-            other_utterance = self.manifest_processor.collection[other_utterance_index]
+            other_utterance = self.manifest_processor.collection[other_utterance_file_index]
             other_utterance_duration = other_utterance.duration
             other_utterance_file = other_utterance.audio_file
 
