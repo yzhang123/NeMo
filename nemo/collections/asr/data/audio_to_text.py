@@ -335,14 +335,20 @@ class _AudioTextDataset(Dataset):
         trim: bool = False,
         bos_id: Optional[int] = None,
         eos_id: Optional[int] = None,
-        pad_id: int = 0,
+        pad_id: int = 0,    
         return_sample_id: bool = False,
         *args,
         **kwargs,
     ):
+        self.manif = manifest_filepath
         if type(manifest_filepath) == str:
             manifest_filepath = manifest_filepath.split(",")
 
+        if any(["train" in x for x in manifest_filepath]):
+            self.is_in_training=True
+        else:
+            self.is_in_training=False
+        
         self.manifest_processor = ASRManifestProcessor(
             manifest_filepath=manifest_filepath,
             parser=parser,
@@ -352,12 +358,24 @@ class _AudioTextDataset(Dataset):
             bos_id=bos_id,
             eos_id=eos_id,
             pad_id=pad_id,
-            *args,
-            **kwargs,
+            index_by_file_id=False,
+            index_by_speaker_id=self.is_in_training
         )
-        self.featurizer = WaveformFeaturizer(sample_rate=sample_rate, int_values=int_values, augmentor=augmentor)
+        if self.is_in_training:
+            self.featurizer = WaveformFeaturizerAndEmbedding(
+                sample_rate=sample_rate, int_values=int_values, augmentor=augmentor
+            )
+        else:
+            self.featurizer = WaveformFeaturizer(sample_rate=sample_rate, int_values=int_values, augmentor=augmentor)
         self.trim = trim
         self.return_sample_id = return_sample_id
+        
+        
+        # self.eval_dir= '/home/yangzhang/code/ts_asr/data/ls_train_clean_mixed'
+        # self.manifest_eval= self.eval_dir + '/manifest.json'
+        # os.makedirs(self.eval_dir, exist_ok=True)
+        # with open(self.manifest_eval, 'w') as fp:
+        #     pass
 
     def get_manifest_sample(self, sample_id):
         return self.manifest_processor.collection[sample_id]
@@ -369,9 +387,65 @@ class _AudioTextDataset(Dataset):
         if offset is None:
             offset = 0
 
-        features = self.featurizer.process(
-            sample.audio_file, offset=offset, duration=sample.duration, trim=self.trim, orig_sr=sample.orig_sr
-        )
+
+        if self.is_in_training:
+            target_speaker = sample.speaker
+            if len(self.manifest_processor.collection.speaker_mapping[target_speaker]) == 1:
+                raise ValueError("target speaker only has one utterance")
+
+            other_utterance_index = np.random.choice(
+                self.manifest_processor.collection.speaker_mapping[target_speaker]
+            )
+            i = 0
+            while other_utterance_index == index and i < 100:
+                other_utterance_index = np.random.choice(
+                    self.manifest_processor.collection.speaker_mapping[target_speaker]
+                )
+                i += 1
+            other_utterance = self.manifest_processor.collection[other_utterance_index]
+            other_utterance_duration = other_utterance.duration
+            other_utterance_file = other_utterance.audio_file
+
+            if len(self.manifest_processor.collection.speaker_mapping) == 1:
+                raise ValueError("only one speaker in dataset")
+
+            random_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+            i = 0
+            while random_speaker_id == target_speaker and i < 100:
+                random_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+                i += 1
+            other_speaker_file_index = np.random.choice(
+                self.manifest_processor.collection.speaker_mapping[random_speaker_id]
+            )
+            other_speaker_file = self.manifest_processor.collection[other_speaker_file_index]
+            other_speaker_duration = other_speaker_file.duration
+            other_speaker_file = other_speaker_file.audio_file
+
+            features, _ = self.featurizer.process(
+                sample.audio_file,
+                other_utterance_file=other_utterance_file,
+                other_speaker_file=other_speaker_file,
+                offset=offset,
+                duration=sample.duration,
+                other_utterance_duration=other_utterance_duration,
+                other_speaker_duration=other_speaker_duration,
+                trim=self.trim,
+                orig_sr=sample.orig_sr,
+            )
+            
+            # for generating eval data
+            # if self.is_in_training:
+            #     print(self.manif)
+            #     f = f"{self.eval_dir}/{index}.wav"
+            #     print(f)
+            #     sf.write(f, features, 16000)
+            #     with open(self.manifest_eval, 'a') as fp:
+            #         tmp = {"audio_filepath": f, "individual_audio_file": sample.audio_file, "speaker": target_speaker, "duration": sample.duration, "text": sample.text_raw, "overlap_audio_filepath": other_speaker_file}
+            #         fp.write(json.dumps(tmp) + "\n")
+        else:
+            features = self.featurizer.process(
+                sample.audio_file, offset=offset, duration=sample.duration, trim=self.trim, orig_sr=sample.orig_sr
+            )
         f, fl = features, torch.tensor(features.shape[0]).long()
 
         t, tl = self.manifest_processor.process_text_by_sample(sample=sample)
