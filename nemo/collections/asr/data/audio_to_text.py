@@ -409,28 +409,46 @@ class _AudioTextDataset(Dataset):
             if len(self.manifest_processor.collection.speaker_mapping) == 1:
                 raise ValueError("only one speaker in dataset")
 
-            random_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+            second_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+            third_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+        
             i = 0
-            while random_speaker_id == target_speaker and i < 100:
-                random_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+            while second_speaker_id == target_speaker  and i < 100:
+                second_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
                 i += 1
-            other_speaker_file_index = np.random.choice(
-                self.manifest_processor.collection.speaker_mapping[random_speaker_id]
+            i = 0
+            while third_speaker_id == target_speaker  and i < 100:
+                third_speaker_id = np.random.choice(list(self.manifest_processor.collection.speaker_mapping.keys()))
+                i += 1
+
+
+            second_speaker_file_index = np.random.choice(
+                self.manifest_processor.collection.speaker_mapping[second_speaker_id]
             )
-            other_speaker_file = self.manifest_processor.collection[other_speaker_file_index]
-            other_speaker_duration = other_speaker_file.duration
-            other_speaker_file = other_speaker_file.audio_file
+            second_speaker_file = self.manifest_processor.collection[second_speaker_file_index]
+            second_speaker_duration = second_speaker_file.duration
+            second_speaker_file = second_speaker_file.audio_file
+
+
+            third_speaker_file_index = np.random.choice(
+                self.manifest_processor.collection.speaker_mapping[third_speaker_id]
+            )
+            third_speaker_file = self.manifest_processor.collection[third_speaker_file_index]
+            third_speaker_duration = third_speaker_file.duration
+            third_speaker_file = third_speaker_file.audio_file
 
             features, _ = self.featurizer.process(
                 sample.audio_file,
-                other_utterance_file=other_utterance_file,
-                other_speaker_file=other_speaker_file,
-                offset=offset,
                 duration=sample.duration,
+                other_utterance_file=other_utterance_file,
                 other_utterance_duration=other_utterance_duration,
-                other_speaker_duration=other_speaker_duration,
+                second_speaker_file=second_speaker_file,
+                second_speaker_duration=second_speaker_duration,
+                third_speaker_file=third_speaker_file,
+                third_speaker_duration=third_speaker_duration,
+                offset=offset,
                 trim=self.trim,
-                orig_sr=sample.orig_sr,
+                orig_sr=sample.orig_sr
             )
             
             # for generating eval data
