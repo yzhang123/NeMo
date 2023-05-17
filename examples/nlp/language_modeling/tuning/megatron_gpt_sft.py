@@ -52,6 +52,8 @@ def _modify_config(gpt_cfg, cfg, add_cfg_to_tree=False):
         gpt_cfg.activations_checkpoint_method = cfg.model.get("activations_checkpoint_method", None)
         gpt_cfg.data = cfg.model.data
         gpt_cfg.optim = cfg.model.optim
+        if 'use_flash_attention' in cfg.model and cfg.model.use_flash_attention:
+            gpt_cfg.use_flash_attention = cfg.model.use_flash_attention
         gpt_cfg.precision = cfg.trainer.precision
         gpt_cfg.answer_only_loss = cfg.model.answer_only_loss
         gpt_cfg.restore_from_path = cfg.model.restore_from_path
