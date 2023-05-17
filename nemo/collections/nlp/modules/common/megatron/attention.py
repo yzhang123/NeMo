@@ -841,7 +841,9 @@ class CoreAttention(MegatronModule):
         # ==================================================
         # Rearrange query_layer, key_layer, value_layer
         # ==================================================  
+
         if self.use_flash_attention:
+            print("flahs")
             query_layer = rearrange(query_layer, 'sq b np hn -> b sq np hn')
             key_layer = rearrange(key_layer, 'sk b np hn -> b sk np hn')
             value_layer = rearrange(value_layer, 'sv b np hn -> b sv np hn')
