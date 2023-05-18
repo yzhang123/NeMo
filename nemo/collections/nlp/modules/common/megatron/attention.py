@@ -123,6 +123,7 @@ class ParallelAttention(MegatronModule, adapter_mixins.AdapterModuleMixin):
     ):
         super(ParallelAttention, self).__init__()
 
+        print("use_flash_attention", use_flash_attention)
         self.layer_number = max(1, layer_number)
         self.attention_type = attention_type
         self.attn_mask_type = attn_mask_type
@@ -839,7 +840,7 @@ class CoreAttention(MegatronModule):
         # ==================================================  
 
         if self.use_flash_attention:
-            print("flahs")
+            # print("flahs")
             query_layer = rearrange(query_layer, 'sq b np hn -> b sq np hn')
             key_layer = rearrange(key_layer, 'sk b np hn -> b sk np hn')
             value_layer = rearrange(value_layer, 'sv b np hn -> b sv np hn')
@@ -857,6 +858,7 @@ class CoreAttention(MegatronModule):
         # Get context_layer [b, np, sq, hn]
         # ==================================================  
         if self.use_flash_attention:
+
             # Use to ensure dtype cast to fp16 or bf16
             (
                 query_layer, 

@@ -148,6 +148,7 @@ def main(cfg) -> None:
         override_config_path=peft_model_cfg,
         save_restore_connector=save_restore_connector,
     )
+    
 
     model.freeze()
     _test_ds = model._build_dataset(peft_model_cfg.data.test_ds, is_train=False)
