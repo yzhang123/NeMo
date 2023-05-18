@@ -292,6 +292,7 @@ class MegatronGPTSFTModel(MegatronGPTModel):
     def fwd_bwd_step(self, dataloader_iter, batch_idx, forward_only):
         batch = next(dataloader_iter)
         _, seq_length = batch['tokens'].shape
+        print(seq_length)
         tensor_shape = [seq_length, get_micro_batch_size(), self.cfg.hidden_size]
         data_iter = get_iterator_k_split(batch, get_num_microbatches())
 
