@@ -272,7 +272,7 @@ def main(cfg) -> None:
     torch.cuda.empty_cache()
     response = trainer.predict(model, request_dl)
     print("###GPU0##", round(torch.cuda.max_memory_allocated(0)/(1024**3)))
-    # print("###GPU1##", round(torch.cuda.max_memory_allocated(1)/(1024**3)))
+    print("###GPU1##", round(torch.cuda.max_memory_allocated(1)/(1024**3)))
 
     print("***************************")
     # print(response)
