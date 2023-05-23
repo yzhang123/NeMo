@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import torch
 import json
 import os
 
@@ -160,6 +160,10 @@ def main(cfg) -> None:
     config = OmegaConf.to_container(cfg.inference, resolve=True)
     model.set_inference_config(config)
     response = trainer.predict(model, request_dl)
+
+
+    print("###GPU0##", round(torch.cuda.max_memory_allocated(0)/(1024**3)))
+    print("###GPU1##", round(torch.cuda.max_memory_allocated(1)/(1024**3)))
 
     if model.global_rank == 0:
         print("***************************")
