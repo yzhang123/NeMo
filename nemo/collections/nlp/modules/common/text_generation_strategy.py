@@ -54,6 +54,7 @@ class TextGenerationStrategy:
     def forward_step(self, batch, tensor_shape):
         fwd_bwd_function = get_forward_backward_func()
         torch.cuda.empty_cache()
+        print("before text foward", round(torch.cuda.max_memory_allocated(0)/(1024**3)))
         output_tensor = fwd_bwd_function(
             forward_step_func=self.model.get_forward_output_only_func(),
             data_iterator=iter([batch,]),

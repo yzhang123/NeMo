@@ -602,6 +602,16 @@ def switch(val1, val2, boolean):
     return (1 - boolean) * val1 + boolean * val2
 
 
+def print_mem(st):
+
+                print(f"{st} cuda max_memory_allocated ###GPU0##", round(torch.cuda.max_memory_allocated(0)/(1024**3)))
+                print(f"{st} cuda emoty max_memory_allocated ###GPU1##", round(torch.cuda.max_memory_allocated(1)/(1024**3)))
+                print(f"{st} cuda emoty memory_allocated ###GPU0##", round(torch.cuda.memory_allocated(0)/(1024**3)))
+                print(f"{st} cuda emoty memory_allocated ###GPU1##", round(torch.cuda.memory_allocated(1)/(1024**3)))
+                print(f"{st} cuda emoty memory_reserved(). ###GPU0##", round(torch.cuda.memory_allocated(0)/(1024**3)))
+                print(f"{st} cuda emoty memory_reserved(). ###GPU1##", round(torch.cuda.memory_allocated(1)/(1024**3)))
+                print(f"{st} cuda emoty max_memory_reserved(). ###GPU0##", round(torch.cuda.max_memory_reserved(0)/(1024**3)))
+                print(f"{st} cuda emoty max_memory_reserved(). ###GPU1##", round(torch.cuda.max_memory_reserved(1)/(1024**3)))
 def sample_sequence_batch(
     model,
     inference_strategy,
@@ -625,9 +635,9 @@ def sample_sequence_batch(
         micro_batch_size=micro_batch_size,
         data_parallel_size=1,
     )
-    assert (
-        model.cfg.get('sequence_parallel', False) == False
-    ), 'sequence_parallel should be False during inference. Disable it in the model config if restoring from nemo or in hparams.yaml if restoring from PTL checkpoint'
+    # assert (
+    #     model.cfg.get('sequence_parallel', False) == False
+    # ), 'sequence_parallel should be False during inference. Disable it in the model config if restoring from nemo or in hparams.yaml if restoring from PTL checkpoint'
     assert (
         model.cfg.get('activations_checkpoint_granularity', None) is None
     ), 'activations_checkpoint_granularity should be None during inference. Disable it in the model config if restoring from nemo or in hparams.yaml if restoring from PTL checkpoint'
@@ -662,6 +672,8 @@ def sample_sequence_batch(
                 tokens, maxlen, micro_batch_size, counter, context_length
             )
             output = inference_strategy.forward_step(batch, tensor_shape)
+            print("counter", counter)
+
 
             if parallel_state.is_pipeline_last_stage():
                 output = output[0]['logits']

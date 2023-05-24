@@ -120,6 +120,7 @@ def main(cfg) -> None:
         peft_model_cfg.activations_checkpoint_granularity = None
         peft_model_cfg.activations_checkpoint_method = None
         peft_model_cfg.encoder_seq_length = cfg.model.data.test_ds.max_seq_length
+        peft_model_cfg.sequence_parallel = cfg.model.sequence_parallel
         if 'use_flash_attention' not in peft_model_cfg:
             peft_model_cfg.use_flash_attention = False
 
@@ -164,6 +165,10 @@ def main(cfg) -> None:
 
     print("###GPU0##", round(torch.cuda.max_memory_allocated(0)/(1024**3)))
     print("###GPU1##", round(torch.cuda.max_memory_allocated(1)/(1024**3)))
+    print("###modelsize##", sum(
+	param.numel() for param in model.parameters()
+)
+)
 
     if model.global_rank == 0:
         print("***************************")

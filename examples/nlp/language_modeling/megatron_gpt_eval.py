@@ -31,7 +31,31 @@ from nemo.collections.nlp.parts.nlp_overrides import NLPDDPStrategy, NLPSaveRest
 from nemo.core.config import hydra_runner
 from nemo.utils.app_state import AppState
 from nemo.utils.model_utils import inject_model_parallel_rank
+import torch
+import json
+import os
 
+import torch.multiprocessing as mp
+from omegaconf.omegaconf import OmegaConf, open_dict
+from pytorch_lightning import Trainer
+from pytorch_lightning.plugins.environments import TorchElasticEnvironment
+from torch.utils.data import DataLoader
+
+from nemo.collections.nlp.models.language_modeling.megatron_gpt_peft_models import MegatronGPTPEFTModel
+from nemo.collections.nlp.models.language_modeling.megatron_gpt_sft_model import MegatronGPTSFTModel
+from nemo.collections.nlp.models.nlp_model import NLPModel
+from nemo.collections.nlp.parts.nlp_overrides import (
+    GradScaler,
+    MegatronHalfPrecisionPlugin,
+    NLPDDPStrategy,
+    NLPSaveRestoreConnector,
+    PEFTSaveRestoreConnector,
+    PipelineMixedPrecisionPlugin,
+)
+from nemo.core.config import hydra_runner
+from nemo.utils import logging
+
+mp.set_start_method("spawn", force=True)
 try:
     from megatron.core import parallel_state
 
@@ -156,9 +180,38 @@ class RequestDataSet(Dataset):
 
 @hydra_runner(config_path="conf", config_name="megatron_gpt_inference")
 def main(cfg) -> None:
+    logging.info("\n\n************** Experiment configuration ***********")
+    logging.info(f"\n{OmegaConf.to_yaml(cfg)}")
+    megatron_amp_o2 = cfg.model.get("megatron_amp_O2", False)
+    with_distributed_adam = False
 
-    # trainer required for restoring model parallel models
-    trainer = Trainer(strategy=NLPDDPStrategy(), **cfg.trainer)
+    plugins = []
+    strategy = NLPDDPStrategy(
+        no_ddp_communication_hook=True,  # we don't use DDP for async grad allreduce
+        gradient_as_bucket_view=cfg.model.gradient_as_bucket_view,
+        find_unused_parameters=False,
+    )
+    if cfg.trainer.precision in [16, "bf16"]:
+        scaler = None
+        if cfg.trainer.precision == 16:
+            scaler = GradScaler(
+                init_scale=cfg.model.get("native_amp_init_scale", 2 ** 32),
+                growth_interval=cfg.model.get("native_amp_growth_interval", 1000),
+                hysteresis=cfg.model.get("hysteresis", 2),
+                enabled=False
+                if cfg.model.pipeline_model_parallel_size > 1
+                else True,  # turn off the grad scale for pipeline parallel LM model
+            )
+        if megatron_amp_o2 and not with_distributed_adam:
+            plugins.append(MegatronHalfPrecisionPlugin(precision=cfg.trainer.precision, device="cuda", scaler=scaler))
+        else:
+            plugins.append(PipelineMixedPrecisionPlugin(precision=cfg.trainer.precision, device="cuda", scaler=scaler))
+
+    if cfg.get("cluster_type", None) == "BCP":
+        plugins.append(TorchElasticEnvironment())
+
+
+    trainer = Trainer(plugins=plugins, strategy=strategy, **cfg.trainer)
 
     if (
         cfg.tensor_model_parallel_size < 0
