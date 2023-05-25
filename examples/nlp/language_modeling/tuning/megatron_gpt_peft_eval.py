@@ -141,7 +141,7 @@ def main(cfg) -> None:
 
     if os.path.isdir(cfg.model.restore_from_path):
         save_restore_connector.model_extracted_dir = cfg.model.restore_from_path
-    model = NLPModel.restore_from(
+    model = MegatronGPTSFTModel.restore_from(
         restore_path=cfg.model.restore_from_path,
         trainer=trainer,
         override_config_path=peft_model_cfg,

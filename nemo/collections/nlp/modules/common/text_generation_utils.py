@@ -638,7 +638,6 @@ def sample_sequence_batch(
     # initialize the batch
     with torch.no_grad():
         context_length = context_lengths.min().item()
-        print("context_length: ", context_length)
         inference_strategy.init_batch(context_tokens, context_length)
         # added eos_id to support the function generate_samples_eval that passes
         # eos_id as an argument and needs termination when that id id found.
@@ -658,6 +657,7 @@ def sample_sequence_batch(
 
 
         lengths = torch.ones([batch_size]).long().cuda() * maxlen
+        print("context_length: ", context_length)
         while context_length < maxlen:
             batch, tensor_shape = inference_strategy.prepare_batch_at_step(
                 tokens, maxlen, micro_batch_size, counter, context_length
