@@ -473,7 +473,7 @@ class ParallelAttention(MegatronModule, adapter_mixins.AdapterModuleMixin):
             key_layer = self.inference_key_memory[:end, ...]
             value_layer = self.inference_value_memory[:end, ...]
             # Adjust attention mask
-            attention_mask = attention_mask[..., start:end, :end]
+            # attention_mask = attention_mask[..., start:end, :end]
             # adjust the key rotary positional embedding
             if rotary_pos_emb is not None:
                 q_pos_emb, k_pos_emb = rotary_pos_emb

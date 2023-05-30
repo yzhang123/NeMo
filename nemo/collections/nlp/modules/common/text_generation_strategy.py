@@ -231,7 +231,7 @@ class GPTModelTextGenerationStrategy(TextGenerationStrategy):
             #     types2use = type_ids[:, context_length - 1].view(batch_size, -1)
 
         """Prepare batch for each of the inference steps"""
-        attention_mask_repeat = torch.concat([self.attention_mask for _ in range(micro_batch_size)])
+        attention_mask_repeat = None #torch.concat([self.attention_mask for _ in range(micro_batch_size)])
         setkey_value_array = torch.tensor(
             [set_inference_key_value_memory] * micro_batch_size, device=torch.cuda.current_device()
         )
