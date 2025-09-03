@@ -646,7 +646,6 @@ class GPTModel(L.LightningModule, io.IOMixin, io.ConnectorMixin, fn.FNMixin):
             inference_context=inference_context,
             **extra_kwargs,
         )
-
         return output_tensor
 
     def data_step(self, dataloader_iter) -> dict[str, torch.Tensor]:

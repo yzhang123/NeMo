@@ -276,6 +276,7 @@ class HyenaStack(MegatronModule):
         inference_context: Optional[BaseInferenceContext] = None,
         packed_seq_params: Optional[PackedSeqParams] = None,
         sequence_len_offset: Optional[Tensor] = None,
+        return_dot_for_analysis: bool = False,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
     ):
@@ -336,8 +337,9 @@ class HyenaStack(MegatronModule):
                     packed_seq_params=packed_seq_params,
                 )
             else:
+                layers_dot_for_analysis = []
                 for layer in self.layers:
-                    hidden_states, context = layer(
+                    layer_return = layer(
                         hidden_states=hidden_states,
                         attention_mask=attention_mask,
                         context=context,
@@ -349,7 +351,13 @@ class HyenaStack(MegatronModule):
                         inference_context=inference_context,
                         packed_seq_params=packed_seq_params,
                         sequence_len_offset=sequence_len_offset,
+                        return_dot_for_analysis=return_dot_for_analysis,
                     )
+                    if len(layer_return) == 3:
+                        hidden_states, context, dot_for_analysis = layer_return
+                        layers_dot_for_analysis.append(dot_for_analysis)
+                    else:
+                        hidden_states, context = layer_return
 
             # The attention layer (currently a simplified transformer layer)
             # outputs a tuple of (hidden_states, context). Context is intended
@@ -360,6 +368,9 @@ class HyenaStack(MegatronModule):
         # Final layer norm.
         if self.post_process and self.post_layer_norm:
             hidden_states = self.final_norm(hidden_states)
+
+        if return_dot_for_analysis:
+            return hidden_states, layers_dot_for_analysis
         return hidden_states
 
     def sharded_state_dict(

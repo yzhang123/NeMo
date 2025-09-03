@@ -36,6 +36,7 @@ from megatron.core.transformer.transformer_layer import TransformerLayer
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
 from torch import Tensor
 from torch.nn.parameter import Parameter
+import os
 
 from nemo.collections.llm.gpt.model.megatron.hyena.hyena_config import HyenaConfig
 from nemo.collections.llm.gpt.model.megatron.hyena.hyena_utils import (
@@ -358,8 +359,9 @@ class HyenaModel(LanguageModule):
             packed_seq_params=packed_seq_params,
         )
 
+        return_dot_for_analysis=True
         # Run decoder.
-        hidden_states = self.decoder(
+        hidden_states, layers_dot_for_analysis = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
             inference_context=inference_context,
@@ -368,8 +370,31 @@ class HyenaModel(LanguageModule):
             rotary_pos_sin=rotary_pos_sin,
             packed_seq_params=packed_seq_params,
             sequence_len_offset=sequence_len_offset,
+            return_dot_for_analysis=return_dot_for_analysis,
             **(extra_block_kwargs or {}),
         )
+
+        if return_dot_for_analysis:
+            import os
+            from pathlib import Path
+            import pickle
+            save_analysis_dir = os.getenv("SAVE_ANALYSIS_PATH")
+
+
+            # write list of numpy arrays to file
+            if not Path(save_analysis_dir).exists():
+                Path(save_analysis_dir).mkdir(exist_ok=True, parents=True)
+            # read environmet varibale
+            save_dot_q_t_dot_k0_analysis_path = Path(save_analysis_dir) / "analysis_q_t_dot_k0.pkl"
+            print(f"q_t_dot_k0  at {save_dot_q_t_dot_k0_analysis_path}")
+            with open(save_dot_q_t_dot_k0_analysis_path, "wb") as f:
+                pickle.dump([x["q_t_dot_k0"] for x in layers_dot_for_analysis], f)
+
+
+            save_dot_q_last_dot_k_t_analysis_path = Path(save_analysis_dir) / "analysis_q_last_dot_k_t.pkl"
+            print(f"q_last_dot_k_t  at {save_dot_q_last_dot_k_t_analysis_path}")
+            with open(save_dot_q_last_dot_k_t_analysis_path, "wb") as f:
+                pickle.dump([x["q_last_dot_k_t"] for x in layers_dot_for_analysis], f)
 
         if not self.post_process:
             return hidden_states

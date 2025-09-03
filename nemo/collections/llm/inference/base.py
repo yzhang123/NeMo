@@ -221,6 +221,7 @@ def setup_model_and_tokenizer(
     """
     model: GPTModel | T5Model = io.load_context(path=ckpt_to_context_subdir(path), subpath="model")
 
+
     if enable_flash_decode:
         if params_dtype == torch.bfloat16 or params_dtype == torch.float16:
             logging.info("Enabling Flash Decode for in-framework inference")
@@ -293,7 +294,6 @@ def generate(
     )
 
     common_inference_params = inference_params or CommonInferenceParams(num_tokens_to_generate=512, top_k=1)
-
     results = mcore_engine.generate(
         prompts=prompts,
         add_BOS=add_BOS,

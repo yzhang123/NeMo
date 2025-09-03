@@ -120,6 +120,7 @@ class HyenaLayer(MegatronModule):
         inference_context: Optional[BaseInferenceContext] = None,
         packed_seq_params: Optional[PackedSeqParams] = None,
         sequence_len_offset: Optional[Tensor] = None,
+        return_dot_for_analysis: bool = False,
         *,
         inference_params: Optional[BaseInferenceContext] = None,
     ):
